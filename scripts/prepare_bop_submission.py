@@ -13,8 +13,8 @@ from utils import misc, logging, json_util
 logger: logging.Logger = logging.get_logger()
 
 # Load the estimated poses from the json file
-object_dataset = "lmo"
-version = "v1"
+object_dataset = "ycbv"
+version = "v_masked_bow"
 object_lids = None
 
 signature = misc.slugify(object_dataset) + "_{}".format(version)

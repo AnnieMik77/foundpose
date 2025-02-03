@@ -156,6 +156,37 @@ def lift_2d_points_to_3d(
     return points_3d_in_cam
 
 
+def get_visual_features(
+    image_chw: torch.Tensor,
+    extractor: torch.nn.Module,
+    debug: bool = False,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+
+    device = image_chw.device
+
+    timer = misc.Timer(enabled=debug)
+
+    # Extract feature vectors.
+    timer.start()
+    image_bchw = image_chw.unsqueeze(0)
+
+    # Extract feature map at the current image scale.
+    extractor_output = extractor(image_bchw)
+    feature_map_chw = extractor_output["feature_maps"][0]
+    feature_map_chw = feature_map_chw.to(device)
+
+    # Prepare the full feature map
+    feature_map_chw = feature_map_chw.detach()
+    feature_map_chw = feature_map_chw.reshape(
+        feature_map_chw.shape[1] * feature_map_chw.shape[2],
+        feature_map_chw.shape[0]
+        )
+
+    timer.elapsed(f"Time for feature extraction")
+
+    return feature_map_chw
+    
+
 def get_visual_features_registered_in_3d(
     image_chw: torch.Tensor,
     depth_image_hw: torch.Tensor,

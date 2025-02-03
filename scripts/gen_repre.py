@@ -44,6 +44,7 @@ class GenRepreOpts(NamedTuple):
     # Feature extraction options.
     extractor_name: str = "dinov2_vits14_reg"
     grid_cell_size: float = 14.0
+    feature_extraction_type: str = "registered_features" # "features" or "registered_features"
 
     # Feature PCA options.
     apply_pca: bool = True
@@ -160,21 +161,35 @@ def generate_raw_repre(
         timer.elapsed("Time for getting template data")
         timer.start()
 
-        # Extract features from the current template.
-        (
-            feat_vectors,
-            feat_to_vertex_ids,
-            vertices_in_model,
-        ) = feature_util.get_visual_features_registered_in_3d(
-            image_chw=image_chw,
-            depth_image_hw=depth_image_hw,
-            object_mask=object_mask_modal,
-            camera=camera_world_from_cam,
-            T_model_from_camera=T_model_from_camera,
-            extractor=extractor,
-            grid_cell_size=opts.grid_cell_size,
-            debug=False,
-        )
+        if opts.feature_extraction_type == "features":
+            # Extract features from the current template.
+            feat_vectors = feature_util.get_visual_features(
+                image_chw=image_chw,
+                extractor=extractor,
+                debug=False,
+            )
+            # tensor with none value
+            feat_to_vertex_ids = torch.tensor([], dtype=torch.uint8, device=device)
+            vertices_in_model = torch.tensor([], dtype=torch.uint8, device=device)
+
+        elif opts.feature_extraction_type == "registered_features":
+            # Extract registered features from the current template.
+            (
+                feat_vectors,
+                feat_to_vertex_ids,
+                vertices_in_model,
+            ) = feature_util.get_visual_features_registered_in_3d(
+                image_chw=image_chw,
+                depth_image_hw=depth_image_hw,
+                object_mask=object_mask_modal,
+                camera=camera_world_from_cam,
+                T_model_from_camera=T_model_from_camera,
+                extractor=extractor,
+                grid_cell_size=opts.grid_cell_size,
+                debug=False,
+            )
+        else:
+            raise ValueError(f"Unknown representation type: {opts.feature_extraction_type}")
 
         timer.elapsed("Time for feature extraction")
         timer.start()
