@@ -174,6 +174,51 @@ def tfidf_matching(
 
     return template_ids, template_scores
 
+def cosine_matching(
+    query_features: torch.Tensor,
+    object_repre: repre_util.FeatureBasedObjectRepre,
+    top_n_templates: int,
+    mask: Optional[torch.Tensor] = None,
+    debug: bool = False,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Matches query features to the object representations using cosine similarity."""
+
+    timer = misc.Timer(enabled=debug)
+    timer.start()
+
+    query_features = query_features.reshape(-1, query_features.shape[0])
+    assert object_repre.feat_vectors is not None
+    
+    # Calculate cosine similarity between the query descriptor and the template descriptors.
+    unique_template_ids = torch.unique(object_repre.feat_to_template_ids)
+    similarities = torch.zeros(len(unique_template_ids), device=object_repre.feat_vectors.device)
+    with torch.no_grad(): 
+        for template_id in unique_template_ids:
+            template_features = object_repre.feat_vectors[object_repre.feat_to_template_ids == template_id]
+
+            # If mask is provided, use only the masked features.
+            # TODO: implement masking correctly
+            # if mask is not None:
+            #     template_features = template_features * mask
+            #     query_features = query_features * mask
+
+            similarities_template = torch.nn.functional.cosine_similarity(
+                template_features, query_features, dim=1
+            )
+            similarities[template_id] = similarities_template.mean()
+            
+        # Select templates with the highest cosine similarity.
+        if top_n_templates == 0:
+            top_n_templates = len(similarities)
+            
+        template_scores, template_ids = torch.topk(
+            similarities, k=top_n_templates, sorted=True
+        )
+
+    timer.elapsed("Time for cosine similarity")
+    return template_ids, template_scores
+
+
 
 def template_matching(
     query_features: torch.Tensor,
@@ -181,6 +226,7 @@ def template_matching(
     top_n_templates: int,
     matching_type: str,
     visual_words_knn_index: Optional[knn_util.KNN] = None,
+    mask: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Retrieves N most similar templates to the query image."""
 
@@ -193,6 +239,14 @@ def template_matching(
             visual_words_knn_index=visual_words_knn_index,
         )
 
+    elif matching_type == "cosine":
+        assert visual_words_knn_index is None
+        template_ids, template_scores = cosine_matching(
+            query_features=query_features,
+            object_repre=object_repre,
+            top_n_templates=top_n_templates,
+            mask=mask,
+        )
     else:
         raise ValueError(f"Unknown matching type '{matching_type}'.")
 

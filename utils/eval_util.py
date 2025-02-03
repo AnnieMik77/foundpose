@@ -297,6 +297,37 @@ class EvaluatorPose:
             "inliers_est_err": inliers_est_err,
             "corr_dist_est": corr_dist_est,
         }
+    
+    def update_without_correspondences(
+        self,
+        scene_id: int,
+        im_id: int,
+        inst_id: int,
+        hypothesis_id: int,
+        obj_lid: int,
+        object_pose_m2w: structs.ObjectPose,
+        orig_camera_c2w: PinholePlaneCameraModel,
+        time_per_inst: Dict,
+        score: float,
+    ):
+
+        # Transformations to the original camera.
+        trans_w2oc = np.linalg.inv(orig_camera_c2w.T_world_from_eye)
+        trans_m2oc = trans_w2oc.dot(misc.get_rigid_matrix(object_pose_m2w))
+
+        R_est, t_est = trans_m2oc[:3, :3], trans_m2oc[:3, 3:]
+
+        self.R.append(R_est)
+        self.t.append(t_est)
+        self.time.append(time_per_inst)
+
+        self.score.append(score)
+        self.result_ids.append((scene_id, im_id, obj_lid, inst_id, hypothesis_id))
+        self.scene_ids.append(scene_id)
+        self.im_ids.append(im_id)
+        self.obj_ids.append(obj_lid)
+        self.inst_ids.append(inst_id)
+        self.hypothesis_ids.append(hypothesis_id)
 
     def save_results_json(self, path):
         """Saves 6D object pose estimates to a file.
