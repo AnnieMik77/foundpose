@@ -454,29 +454,18 @@ def infer(opts: InferOpts) -> None:
 
                 if opts.mask_feature_map:
                     mask_modal_tensor = array_to_tensor(mask_modal).to(device)
-                    # # Keep only points inside the object mask.
-                    # query_points = feature_util.filter_points_by_mask(
-                    #     grid_points, mask_modal_tensor
-                    # )
-
-                    # # Extract features at the selected points, of shape (num_points, feat_dims).
-                    # query_features = feature_util.sample_feature_map_at_points(
-                    #     feature_map_chw=feature_map_chw,
-                    #     points=query_points,
-                    #     image_size=(image_np_hwc.shape[1], image_np_hwc.shape[0]),
-                    # ).contiguous()
-
+                   
 
                 timer.start()
 
                 # Perform template matching.
-                # TODO: masked setting is not working yet.
                 template_ids, template_scores = template_util.template_matching(
                     query_features=feature_map_chw,
                     object_repre=repre,
                     top_n_templates=opts.match_top_n_templates,
                     matching_type="cosine",
                     mask = mask_modal_tensor if opts.mask_feature_map else None,
+                    grid_points = grid_points if opts.mask_feature_map else None,
                 )
                 times["template_matching"] = timer.elapsed("Time for template matching")
                 timer.start()
@@ -499,24 +488,33 @@ def infer(opts: InferOpts) -> None:
                             "type": "coarse",
                             "R_m2c": R_m2c_coarse,
                             "t_m2c": t_m2c_coarse,
+                            "pose_m2c": pose_m2c,
+                            "camera_pose_c2w": camera_pose.T_world_from_eye,
                             "template_id": template_id,
                             "template_score": template_scores[template_rank],
                             "template_rank": template_rank,
                         }
                     )
-
                 times["pose_estimation"] = timer.elapsed("Time for pose estimation")
 
-                if False:
+               
+                if True:
+                    poses_to_store = []
                     # TODO: implement saving of template ids and scores
-                    path_for_scores = f"pose_matches_{object_lid}_{bop_chunk_id}_{bop_im_id}.json"
+                    path_for_scores = f"results/pose_matches_{object_lid}_{bop_chunk_id}_{bop_im_id}.json"
 
-                    gen_res = {}
-                    for pose in final_poses:
-                        gen_res[str(pose["template_id"])] = float(pose["template_score"])
-                
+                    for pose_x in final_poses:
+                        poses_to_store.append(
+                            {
+                                "pose_m2c": pose_x["pose_m2c"].tolist(),
+                                "camera_pose_c2w": pose_x["camera_pose_c2w"].tolist(),
+                                "template_id": int(pose_x["template_id"]),
+                                "template_score": float(pose_x["template_score"]),
+                                "template_rank": int(pose_x["template_rank"]),
+                            }
+                        )
                     with open(path_for_scores, 'w') as f:
-                        json.dump(gen_res, f, indent=4)
+                        json.dump(poses_to_store, f, indent=4)
 
                 # For now store only the pose based on the best template.
                 # TODO: in future, look at the correspondence matching

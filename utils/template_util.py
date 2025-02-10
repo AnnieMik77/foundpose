@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 
 import torch
 
-from utils import knn_util, repre_util, logging, misc
+from utils import knn_util, repre_util, logging, misc, feature_util
 
 logger: logging.Logger = logging.get_logger()
 
@@ -179,6 +179,7 @@ def cosine_matching(
     object_repre: repre_util.FeatureBasedObjectRepre,
     top_n_templates: int,
     mask: Optional[torch.Tensor] = None,
+    grid_points: Optional[torch.Tensor] = None,
     debug: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Matches query features to the object representations using cosine similarity."""
@@ -186,8 +187,23 @@ def cosine_matching(
     timer = misc.Timer(enabled=debug)
     timer.start()
 
-    query_features = query_features.reshape(-1, query_features.shape[0])
     assert object_repre.feat_vectors is not None
+
+    if mask is not None:
+        # Keep only points inside the object mask.
+        query_points = feature_util.filter_points_by_mask(
+            grid_points, mask
+        )
+
+        # Extract features at the selected points, of shape (num_points, feat_dims).
+        query_features = feature_util.sample_feature_map_at_points(
+            feature_map_chw=query_features,
+            points=query_points,
+            image_size=(420,420),
+        ).contiguous()
+
+    else:
+        query_features = query_features.reshape(-1, query_features.shape[0])
     
     # Calculate cosine similarity between the query descriptor and the template descriptors.
     unique_template_ids = torch.unique(object_repre.feat_to_template_ids)
@@ -197,10 +213,14 @@ def cosine_matching(
             template_features = object_repre.feat_vectors[object_repre.feat_to_template_ids == template_id]
 
             # If mask is provided, use only the masked features.
-            # TODO: implement masking correctly
-            # if mask is not None:
-            #     template_features = template_features * mask
-            #     query_features = query_features * mask
+            if mask is not None:
+                template_features = template_features.reshape(template_features.shape[-1],30,30) 
+                template_features = feature_util.sample_feature_map_at_points(
+                    feature_map_chw=template_features,
+                    points=query_points,
+                    image_size=(420, 420),
+                ).contiguous()
+
 
             similarities_template = torch.nn.functional.cosine_similarity(
                 template_features, query_features, dim=1
@@ -227,6 +247,7 @@ def template_matching(
     matching_type: str,
     visual_words_knn_index: Optional[knn_util.KNN] = None,
     mask: Optional[torch.Tensor] = None,
+    grid_points: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Retrieves N most similar templates to the query image."""
 
@@ -246,6 +267,7 @@ def template_matching(
             object_repre=object_repre,
             top_n_templates=top_n_templates,
             mask=mask,
+            grid_points=grid_points,
         )
     else:
         raise ValueError(f"Unknown matching type '{matching_type}'.")

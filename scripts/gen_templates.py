@@ -30,6 +30,9 @@ from utils.misc import warp_depth_image, warp_image
 from utils import geometry, renderer_builder
 from utils.renderer_base import RenderType
 
+import os
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
+
 
 class GenTemplatesOpts(NamedTuple):
     """Options that can be specified via the command line."""
