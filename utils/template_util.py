@@ -187,9 +187,33 @@ def cosine_matching(
     timer = misc.Timer(enabled=debug)
     timer.start()
 
-    assert object_repre.feat_vectors is not None
+    if mask is None:
+        assert object_repre.feat_vectors_full is not None
+        query_features = query_features.reshape(-1, query_features.shape[0])
+    
+        # Calculate cosine similarity between the query descriptor and the template descriptors.
+        unique_template_ids = torch.unique(object_repre.feat_to_template_ids)
+        similarities = torch.zeros(len(unique_template_ids), device=object_repre.feat_vectors.device)
+        with torch.no_grad(): 
+            for template_id in unique_template_ids:
+                template_features = object_repre.feat_vectors_full[template_id]
 
-    if mask is not None:
+                similarities_template = torch.nn.functional.cosine_similarity(
+                    template_features, query_features, dim=1
+                )
+                similarities[template_id] = similarities_template.mean()
+            
+                     # Select templates with the highest cosine similarity.
+            if top_n_templates == 0:
+                top_n_templates = len(similarities)
+                
+            template_scores, template_ids = torch.topk(
+                similarities, k=top_n_templates, sorted=True
+            )
+
+
+    if mask is not None: # deprecated, needs fixing
+        raise NotImplementedError("Masking is not implemented.")
         # Keep only points inside the object mask.
         query_points = feature_util.filter_points_by_mask(
             grid_points, mask
@@ -202,18 +226,16 @@ def cosine_matching(
             image_size=(420,420),
         ).contiguous()
 
-    else:
+        assert object_repre.feat_vectors is not None
         query_features = query_features.reshape(-1, query_features.shape[0])
     
-    # Calculate cosine similarity between the query descriptor and the template descriptors.
-    unique_template_ids = torch.unique(object_repre.feat_to_template_ids)
-    similarities = torch.zeros(len(unique_template_ids), device=object_repre.feat_vectors.device)
-    with torch.no_grad(): 
-        for template_id in unique_template_ids:
-            template_features = object_repre.feat_vectors[object_repre.feat_to_template_ids == template_id]
-
-            # If mask is provided, use only the masked features.
-            if mask is not None:
+        # Calculate cosine similarity between the query descriptor and the template descriptors.
+        unique_template_ids = torch.unique(object_repre.feat_to_template_ids)
+        similarities = torch.zeros(len(unique_template_ids), device=object_repre.feat_vectors.device)
+        with torch.no_grad(): 
+            for template_id in unique_template_ids:
+                template_features = object_repre.feat_vectors_full[template_id]
+                # If mask is provided, use only the masked features.
                 template_features = template_features.reshape(template_features.shape[-1],30,30) 
                 template_features = feature_util.sample_feature_map_at_points(
                     feature_map_chw=template_features,
@@ -221,19 +243,18 @@ def cosine_matching(
                     image_size=(420, 420),
                 ).contiguous()
 
+                similarities_template = torch.nn.functional.cosine_similarity(
+                    template_features, query_features, dim=1
+                )
+                similarities[template_id] = similarities_template.mean()
 
-            similarities_template = torch.nn.functional.cosine_similarity(
-                template_features, query_features, dim=1
+            # Select templates with the highest cosine similarity.
+            if top_n_templates == 0:
+                top_n_templates = len(similarities)
+                
+            template_scores, template_ids = torch.topk(
+                similarities, k=top_n_templates, sorted=True
             )
-            similarities[template_id] = similarities_template.mean()
-            
-        # Select templates with the highest cosine similarity.
-        if top_n_templates == 0:
-            top_n_templates = len(similarities)
-            
-        template_scores, template_ids = torch.topk(
-            similarities, k=top_n_templates, sorted=True
-        )
 
     timer.elapsed("Time for cosine similarity")
     return template_ids, template_scores

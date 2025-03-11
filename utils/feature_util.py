@@ -177,15 +177,37 @@ def get_visual_features(
 
     # Prepare the full feature map
     feature_map_chw = feature_map_chw.detach()
-    feature_map_chw = feature_map_chw.reshape(
+    feature_map_hwc = feature_map_chw.reshape(
         feature_map_chw.shape[1] * feature_map_chw.shape[2],
         feature_map_chw.shape[0]
         )
 
     timer.elapsed(f"Time for feature extraction")
 
-    return feature_map_chw
-    
+    return feature_map_hwc
+
+def downscale_query_points(
+    feature_map_chw: torch.Tensor, points: torch.Tensor, image_size: Tuple[int, int]
+) -> torch.Tensor:
+    """Samples a feature map at the specified 2D coordinates.
+
+    Args:
+        feature_map_chw: A tensor of shape (C, H, W).
+        points: A tensor of shape (N, 2) where N is the number of points.
+        image_size: Size of the input image expressed as (image_width, image_height).
+            2D coordinates of the points are expressed in the image coordinates.
+    Returns:
+        A tensor of shape (num_points, 2) containing the query points
+        expressed in the feature map coordinates.
+    """
+
+    # Normalize the 2D coordinates to [0, 1].
+    uv = torch.div(1.0, torch.as_tensor(image_size)).to(points.device) * points
+
+    # Rescale the 2D coordinates to the feature map size.
+    uv[:, 0] = uv[:, 0] * feature_map_chw.shape[1]
+    uv[:, 1] = uv[:, 1] * feature_map_chw.shape[2]
+    return uv.int()
 
 def get_visual_features_registered_in_3d(
     image_chw: torch.Tensor,
@@ -258,10 +280,19 @@ def get_visual_features_registered_in_3d(
         image_size=(image_chw.shape[-1], image_chw.shape[-2]),
     ).detach()
 
+    # Reshape the feature vectors to hw*c
+    feature_map_chw = feature_map_chw.detach()
+    feature_map_hwc = feature_map_chw.reshape(
+        feature_map_chw.shape[1] * feature_map_chw.shape[2],
+        feature_map_chw.shape[0]
+        )
+
     timer.elapsed(f"Time for feature sampling.")
 
     return (
+        feature_map_hwc,
         feat_vectors,
+        query_points,
         vertex_ids,
         vertices_in_model,
     )

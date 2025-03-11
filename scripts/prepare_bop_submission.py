@@ -91,7 +91,7 @@ for object_lid in object_lids:
             )
         )
 
-bop_path = os.path.join(output_dir, f"coarse_{object_dataset}-estimated-poses.csv")
+bop_path = os.path.join(output_dir, f"coarse-{version.replace('_', '-')}_{object_dataset}-test.csv")
 logger.info("Saving BOP submission file to: {}".format(bop_path))
 with open(bop_path, "wb") as f:
     f.write("\n".join(lines).encode("utf-8"))

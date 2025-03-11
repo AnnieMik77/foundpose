@@ -40,8 +40,14 @@ class FeatureBasedObjectRepre:
     # 3D vertex normals of shape (num_vertices, 3).
     vertex_normals: Optional[torch.Tensor] = None
 
+    # Feature vectors of shape (num_templates, num_features, feat_dims).
+    feat_vectors_full: Optional[torch.Tensor] = None
+
     # Feature vectors of shape (num_features, feat_dims).
     feat_vectors: Optional[torch.Tensor] = None
+
+    # Feature vectors of shape (num_features).
+    query_pts: Optional[torch.Tensor] = None
 
     # Feature options.
     feat_opts: Optional[FeatureOpts] = None
