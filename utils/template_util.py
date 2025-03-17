@@ -189,7 +189,7 @@ def cosine_matching(
 
     if mask is None:
         assert object_repre.feat_vectors_full is not None
-        query_features = query_features.reshape(-1, query_features.shape[0])
+        query_features = query_features.permute(1, 2, 0).reshape(-1, query_features.shape[0])
     
         # Calculate cosine similarity between the query descriptor and the template descriptors.
         unique_template_ids = torch.unique(object_repre.feat_to_template_ids)
@@ -227,7 +227,7 @@ def cosine_matching(
         ).contiguous()
 
         assert object_repre.feat_vectors is not None
-        query_features = query_features.reshape(-1, query_features.shape[0])
+        query_features = query_features.permute(1, 2, 0).reshape(-1, query_features.shape[0])
     
         # Calculate cosine similarity between the query descriptor and the template descriptors.
         unique_template_ids = torch.unique(object_repre.feat_to_template_ids)
@@ -236,6 +236,7 @@ def cosine_matching(
             for template_id in unique_template_ids:
                 template_features = object_repre.feat_vectors_full[template_id]
                 # If mask is provided, use only the masked features.
+                # do something about the reshape
                 template_features = template_features.reshape(template_features.shape[-1],30,30) 
                 template_features = feature_util.sample_feature_map_at_points(
                     feature_map_chw=template_features,

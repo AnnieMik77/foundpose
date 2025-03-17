@@ -334,12 +334,12 @@ def vis_inference_results(
                 vis,
                 vis_gt_pose,
                 color=(255, 0, 0),
-                dilate_iterations=1,
+                dilate_iterations=0,
             )
 
         # Show contours of the object in the coarse estimated pose.
         if object_pose_m2w_coarse is not None:
-            vis_coarse_est_pose = render_vis_util.vis_posed_meshes_of_objects(
+            vis_coarse_est_pose = render_vis_util.create_object_mask(
                 base_image=np.ones_like(base_image) * 255,
                 object_lids=[object_lid],
                 object_poses_m2w=[object_pose_m2w_coarse],
@@ -350,12 +350,12 @@ def vis_inference_results(
                 fg_opacity=1.0,
                 bg_opacity=1.0,
                 all_in_one=True,
-            )[0]
+            )
             vis = vis_base_util.add_contour_overlay(
                 vis,
                 vis_coarse_est_pose,
                 color=(0, 0, 255),
-                dilate_iterations=1,
+                dilate_iterations=0,
             )
 
         # Show contours of the object in the final estimated pose.
@@ -387,7 +387,7 @@ def vis_inference_results(
             vis,
             vis_est_pose,
             color=(0, 255, 0),
-            dilate_iterations=1,
+            dilate_iterations=0,
         )
 
         vis_base_util.plot_images(imgs=[vis], dpi=dpi)

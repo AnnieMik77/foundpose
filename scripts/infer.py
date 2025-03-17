@@ -21,6 +21,7 @@ from utils.misc import array_to_tensor, tensor_to_array, tensors_to_arrays
 from bop_toolkit_lib import inout, dataset_params
 import bop_toolkit_lib.config as bop_config
 import bop_toolkit_lib.misc as bop_misc
+from copy import deepcopy
 
 
 from utils import (
@@ -42,12 +43,14 @@ from utils import (
     logging,
     misc,
     structs,
+    featuremetric_refine
 )
 
 from utils.structs import AlignedBox2f, PinholePlaneCameraModel
 from utils.misc import warp_depth_image, warp_image
 
-
+import os
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
 logger: logging.Logger = logging.get_logger()
 
 
@@ -201,7 +204,7 @@ def infer(opts: InferOpts) -> None:
         )
         base_repre_dir = os.path.join(bop_config.output_path, "object_repre")
         repre_dir = repre_util.get_object_repre_dir_path(
-            base_repre_dir, opts.version, opts.object_dataset, object_lid
+            base_repre_dir, opts.repre_version, opts.object_dataset, object_lid
         )
         repre = repre_util.load_object_repre(
             repre_dir=repre_dir,
@@ -631,6 +634,44 @@ def infer(opts: InferOpts) -> None:
 
                 times["final_select"] = timer.elapsed("Time for selecting final pose")
 
+                timer.start()
+                coarse = deepcopy(final_poses[0])
+                initial_pose = structs.ObjectPose(
+                        R=final_poses[0]["R_m2c"],
+                        t=final_poses[0]["t_m2c"]
+                    )
+                initial_pose = misc.get_rigid_matrix(initial_pose)
+                
+                featuremetric_align = True
+                if featuremetric_align:
+                    best_template_id = corresp[final_poses[0]["corresp_id"]]["template_id"].item()
+
+                    templ_mask = torch.where(repre.feat_to_template_ids==best_template_id)[0]
+                    template_masked_features = repre.feat_vectors[templ_mask]
+                    template_feat_to_vertex_mapping = repre.feat_to_vertex_ids.to(device)[templ_mask]
+                    template_vertices = repre.vertices[templ_mask]
+
+                    camera_c = camera_c2w.c
+                    camera_f = camera_c2w.f
+                    camera_K = np.array([[camera_f[0], 0, camera_c[0]], [0, camera_f[1], camera_c[1]], [0, 0, 1]])
+
+                    optimized_pose,_,_ =  featuremetric_refine.minimize_with_scipy(
+                        initial_pose = initial_pose,
+                        template_masked_features = template_masked_features,
+                        template_feat_to_vertex_mapping = template_feat_to_vertex_mapping,
+                        template_vertices = template_vertices,
+                        query_features = feature_map_chw_proj,
+                        virtual_camera_K = camera_K,
+                        max_iter=30,
+                        verbose=0
+                    )
+        
+                    R = optimized_pose[:3,:3]
+                    t = optimized_pose[:3,3].reshape(3,1)
+                    final_poses[0]["R_m2c"] = R
+                    final_poses[0]["t_m2c"] = t
+
+                times["featuremetric_refine"] = timer.elapsed("Time for featuremetric refine")
                 # Print summary.
                 if len(final_poses) > 0:
                     # Divide to the number of hypothesis because this is the real time needed per hypothesis.
@@ -657,12 +698,22 @@ def infer(opts: InferOpts) -> None:
                     pose_est_m2c = structs.ObjectPose(
                         R=final_pose["R_m2c"], t=final_pose["t_m2c"]
                     )
+                    coarse_est_m2c = structs.ObjectPose(
+                        R=coarse["R_m2c"], t=coarse["t_m2c"]
+                    )
+
                     trans_c2w = camera_c2w.T_world_from_eye
 
                     trans_m2w = trans_c2w.dot(misc.get_rigid_matrix(pose_est_m2c))
+                    coarse_trans_m2w = trans_c2w.dot(misc.get_rigid_matrix(coarse_est_m2c))
+
                     pose_m2w = structs.ObjectPose(
                         R=trans_m2w[:3, :3], t=trans_m2w[:3, 3:]
                     )
+                    pose_m2w_coarse = structs.ObjectPose(
+                        R=coarse_trans_m2w[:3, :3], t=coarse_trans_m2w[:3, 3:]
+                    )
+
 
                     # Get image for visualization.
                     vis_base_image = (255 * image_np_hwc).astype(np.uint8)
@@ -746,7 +797,7 @@ def infer(opts: InferOpts) -> None:
                             base_image=vis_base_image,
                             object_repre=repre_np,
                             object_lid=object_lid,
-                            object_pose_m2w=pose_m2w, # pose_m2w,
+                            object_pose_m2w=pose_m2w,
                             object_pose_m2w_gt=object_pose_m2w_gt,
                             feature_map_chw=feature_map_chw,
                             feature_map_chw_proj=feature_map_chw_proj,

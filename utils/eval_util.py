@@ -170,7 +170,8 @@ class EvaluatorPose:
         rotation_errors = eval_errors.compute_rotation_error(R_est, R_gt)
         translation_errors = eval_errors.compute_translation_errors(t_est, t_gt)
         translation_errors = np.linalg.norm(translation_errors, axis=-1)
-
+        print("r:", rotation_errors)
+        print("t:", translation_errors)
         # Detection mask iou.
         mask_iou = eval_errors.mask_iou(pred_mask, gt_mask)
 
