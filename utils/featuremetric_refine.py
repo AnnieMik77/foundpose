@@ -155,9 +155,9 @@ class OptimizationTracker:
         """
         For a given pose, computes the residuals between the template and query features
 
-        Args:
+        Args: TODO
         - pose: 6D vector representing the rotation and translation
-        - template: template object
+        - template_features: template object
         - query: query object
         - camera_K: virtual camera intrinsics
 
@@ -181,13 +181,11 @@ class OptimizationTracker:
         # virtual camera intrinsics to gpu
         camera_K = torch.tensor(camera_K).to(device).float()
 
-        feature_diffs = []
-
         # 1. Features in template
         p_i = template_masked_features
 
         # 2. Points from object to virtual camera coordinates
-        x_i = template_vertices[template_feat_to_vertex_mapping].T
+        x_i = template_vertices.T #[template_feat_to_vertex_mapping].T
         pt_in_camera_coords = R@x_i + t.repeat(x_i.shape[1], 1).T
 
         # 3. Points from camera coordinates to image coordinates
@@ -195,13 +193,29 @@ class OptimizationTracker:
 
         # 4. Get the feature map at the point
         feature_at_projected_pt = sample_feature_map_at_points(
-            query_features, pt_in_img_space.T, (420,420)
+            query_features, pt_in_img_space.T, (420,420), align_corners=False
             ).squeeze()
+        
+        print(torch.max(feature_at_projected_pt))
+        print(torch.min(feature_at_projected_pt))
+
+        feature_at_projected_pt = torch.nn.functional.normalize(feature_at_projected_pt, dim=-1)
+        p_i = torch.nn.functional.normalize(p_i, dim=-1)
+
+        print(torch.max(feature_at_projected_pt))
+        print(torch.min(feature_at_projected_pt))
+
 
         # 6. Calculate the difference 
         feature_diff = p_i - feature_at_projected_pt
 
+        self.residuals.append(torch.sum(torch.abs(feature_diff), dim=1))
+
+        print(feature_diff.shape)
         feature_diffs = feature_diff.flatten()
+                                                # feature_diffs = torch.mean(torch.abs(feature_diff), dim=1)
+        print(torch.max(feature_diffs))
+        print(torch.min(feature_diffs))
 
         return feature_diffs.detach().cpu().numpy()
     
@@ -222,9 +236,12 @@ class OptimizationTracker:
         template_feat_to_vertex_mapping = self.template_feat_to_vertex_mapping
         template_vertices = self.template_vertices
         query_features = self.query_features
+        query_mask = self.query_mask
         camera_K = self.camera_K
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        # virtual camera intrinsics to gpu
+        camera_K = torch.tensor(camera_K).to(device).float()
 
         # 0. Pose to rotation and translation
         rvec = pose[:3]
@@ -233,14 +250,6 @@ class OptimizationTracker:
         R,_,_,_ = rodrigues(rvec.reshape(1,3))
         R = R.squeeze()
         # assert R1 == R
-
-        # pose to gpu
-        t = t.float()
-
-        # virtual camera intrinsics to gpu
-        camera_K = torch.tensor(camera_K).to(device).float()
-
-        feature_diffs = []
 
         # 1. Features in template
         p_i = template_masked_features
@@ -252,6 +261,15 @@ class OptimizationTracker:
         # 3. Points from camera coordinates to image coordinates
         pt_in_img_space = camera_to_img(camera_K, pt_in_camera_coords) # pi
 
+        # verify if pt_in_img_space is within the image
+        pt_in_img_space = pt_in_img_space.T
+        pt_in_img_space = torch.tensor(pt_in_img_space).to(device).float()
+        pt_in_img_space = pt_in_img_space[pt_in_img_space[:,0] >= 0]
+        pt_in_img_space = pt_in_img_space[pt_in_img_space[:,1] >= 0]
+        pt_in_img_space = pt_in_img_space[pt_in_img_space[:,0] < 420]
+        pt_in_img_space = pt_in_img_space[pt_in_img_space[:,1] < 420]
+
+
         # 4. Get the feature map at the point #
         feature_at_projected_pt = sample_feature_map_at_points(
             query_features, pt_in_img_space.T, (420,420)
@@ -261,7 +279,33 @@ class OptimizationTracker:
         feature_diff = p_i - feature_at_projected_pt 
         feature_diffs = feature_diff.flatten()
         return feature_diffs
+
+def BarronLoss(x):
+    alpha = torch.tensor(-5).to("cuda").float()
+    scale = 10
+    epsilon = 1e-8
+
+    x_torch = torch.tensor(x, requires_grad=True).to("cuda").float()
+
+    b = torch.abs(alpha - 2) + epsilon
+    d = torch.where(alpha >= 0, alpha + epsilon, alpha - epsilon)
+    loss = (b / d) * (torch.pow((x_torch/ scale)**2 / b + 1., 0.5 * d) - 1.)
+
+    # First derivative using autograd
+    dloss, = torch.autograd.grad(torch.sum(loss), x_torch, create_graph=True)
     
+    # Second derivative using autograd
+    d2loss, = torch.autograd.grad(torch.sum(dloss), x_torch, create_graph=False)
+
+    # Detach and convert to numpy
+    loss = loss.detach().cpu().numpy()
+    dloss = dloss.detach().cpu().numpy()
+    d2loss = d2loss.detach().cpu().numpy()
+    
+    return np.vstack((loss, dloss, d2loss))
+
+
+
 def minimize_with_scipy(initial_pose, template_masked_features, template_feat_to_vertex_mapping, template_vertices, query_features, virtual_camera_K, max_iter=100, verbose=0):
     tracker = OptimizationTracker()
 
@@ -274,7 +318,8 @@ def minimize_with_scipy(initial_pose, template_masked_features, template_feat_to
         x0=rt_vector.squeeze(),
         args=(template_masked_features, template_feat_to_vertex_mapping, template_vertices, query_features, virtual_camera_K),
         method="trf",
-        loss="huber",
+        loss="cauchy",
+        f_scale=0.1,
         max_nfev=max_iter,
         verbose=verbose
     )
@@ -304,10 +349,10 @@ def minimize_with_torchmin(initial_pose, template_masked_features, template_feat
         x0=rt_vector,
         method="trf",
         max_nfev=max_iter,
-        verbose=verbose
+        verbose=verbose,
+        tr_solver="exact",
     )
-
-    pose_vector = result.x
+    pose_vector = result.x.detach().cpu().numpy()
     final_pose = rvec_tvec_to_matrix(pose_vector[:3], pose_vector[3:])
 
     return final_pose, tracker.input_poses, tracker.residuals

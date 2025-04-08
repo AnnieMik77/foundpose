@@ -167,6 +167,9 @@ def tfidf_matching(
         object_repre.template_descs, query_tfidf.tile(num_templates, 1)
     )
 
+    if top_n_templates == -1:
+        print("top_n_templates is -1", match_feat_cos_sims.shape) 
+        top_n_templates = len(match_feat_cos_sims)
     # Select templates with the highest cosine similarity.
     template_scores, template_ids = torch.topk(
         match_feat_cos_sims, k=top_n_templates, sorted=True
@@ -203,8 +206,8 @@ def cosine_matching(
                 )
                 similarities[template_id] = similarities_template.mean()
             
-                     # Select templates with the highest cosine similarity.
-            if top_n_templates == 0:
+             # Select templates with the highest cosine similarity.
+            if top_n_templates == -1:
                 top_n_templates = len(similarities)
                 
             template_scores, template_ids = torch.topk(

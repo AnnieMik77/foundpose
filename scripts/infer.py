@@ -636,36 +636,74 @@ def infer(opts: InferOpts) -> None:
 
                 timer.start()
                 coarse = deepcopy(final_poses[0])
-                initial_pose = structs.ObjectPose(
-                        R=final_poses[0]["R_m2c"],
-                        t=final_poses[0]["t_m2c"]
-                    )
-                initial_pose = misc.get_rigid_matrix(initial_pose)
                 
                 featuremetric_align = True
                 if featuremetric_align:
-                    best_template_id = corresp[final_poses[0]["corresp_id"]]["template_id"].item()
+                    initial_pose = structs.ObjectPose(
+                            R=final_poses[0]["R_m2c"],
+                            t=final_poses[0]["t_m2c"]
+                        )
+                    initial_pose = misc.get_rigid_matrix(initial_pose)
 
-                    templ_mask = torch.where(repre.feat_to_template_ids==best_template_id)[0]
-                    template_masked_features = repre.feat_vectors[templ_mask]
-                    template_feat_to_vertex_mapping = repre.feat_to_vertex_ids.to(device)[templ_mask]
-                    template_vertices = repre.vertices[templ_mask]
+                    # Get the best correspondences
+                    top_corresp = corresp[final_poses[0]["corresp_id"]]
 
-                    camera_c = camera_c2w.c
-                    camera_f = camera_c2w.f
-                    camera_K = np.array([[camera_f[0], 0, camera_c[0]], [0, camera_f[1], camera_c[1]], [0, 0, 1]])
+                    # Filter out the inliers based on PnP     
+                    use_pnp = False
+                    if use_pnp:
+                        inliers = final_poses[0]["inliers"].flatten()
+                        template_masked_features = top_corresp["features"][inliers]
+                        template_vertices = top_corresp["coord_3d"][inliers]
+                    else:
+                        best_template_id = corresp[final_poses[0]["corresp_id"]]["template_id"].item()
+                        templ_mask = torch.where(repre.feat_to_template_ids==best_template_id)[0]
+                        template_masked_features = repre.feat_vectors[templ_mask]
+                        template_vertices = repre.vertices[templ_mask]
 
-                    optimized_pose,_,_ =  featuremetric_refine.minimize_with_scipy(
+                    # Virtual camera intrinsics
+                    camera_K = camera_c2w.uv_to_window_matrix()
+                    # create dir for saving
+                    os.makedirs("featuremetric_refine", exist_ok=True)
+                    np.save("featuremetric_refine/camera_K.npy", camera_K)
+                    np.save("featuremetric_refine/initial_pose.npy", initial_pose)
+                    torch.save(template_masked_features, "featuremetric_refine/template_masked_features.pt")
+                    torch.save(template_vertices, "featuremetric_refine/template_vertices.pt")
+                    torch.save(feature_map_chw_proj, "featuremetric_refine/image_tensor.pt")
+                                 
+                    optimized_pose,tried_poses_refinement,residuals_refinement =  featuremetric_refine.minimize_with_scipy(
                         initial_pose = initial_pose,
                         template_masked_features = template_masked_features,
-                        template_feat_to_vertex_mapping = template_feat_to_vertex_mapping,
+                        template_feat_to_vertex_mapping = None, #template_feat_to_vertex_mapping,
                         template_vertices = template_vertices,
                         query_features = feature_map_chw_proj,
                         virtual_camera_K = camera_K,
-                        max_iter=30,
+                        max_iter=15,
                         verbose=0
                     )
-        
+                    if opts.vis_results:
+                        from utils import vis_refinement
+
+                        poses_in_original_camera = []
+                        original_camera_pose_cw = np.linalg.inv(orig_camera_c2w.T_world_from_eye)
+                        virtual_camera_pose_wc = camera_c2w.T_world_from_eye
+
+                        for pose in tried_poses_refinement:
+                            new_pose = original_camera_pose_cw @ virtual_camera_pose_wc @ np.array(pose)
+                            poses_in_original_camera.append(new_pose)
+
+                        original_camera_K = np.array([[orig_camera_c2w.f[0], 0, orig_camera_c2w.c[0]], [0, orig_camera_c2w.f[1], orig_camera_c2w.c[1]], [0, 0, 1]])
+                        
+                        vis_refinement.poses_giff_with_residuals(   
+                            poses_in_original_camera,
+                            residuals_refinement,
+                            template_vertices,
+                            img_shape=(orig_image_np_hwc.shape[1], orig_image_np_hwc.shape[0]),
+                            camera_K=original_camera_K,
+                            obj_id=object_lid,
+                            output_path="poses_asdf.gif",
+                            background_img=orig_image_np_hwc
+                        )
+                        
                     R = optimized_pose[:3,:3]
                     t = optimized_pose[:3,3].reshape(3,1)
                     final_poses[0]["R_m2c"] = R

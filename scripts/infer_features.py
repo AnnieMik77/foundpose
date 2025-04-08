@@ -468,7 +468,6 @@ def infer(opts: InferOpts) -> None:
                     grid_points = grid_points if opts.mask_feature_map else None,
                 )
                 times["template_matching"] = timer.elapsed("Time for template matching")
-                timer.start()
 
                 # Normalize the template scores to probability
                 template_scores = template_scores/sum(template_scores)
@@ -476,151 +475,82 @@ def infer(opts: InferOpts) -> None:
                 template_scores = template_scores.cpu().numpy()
 
                 # Infer poses from the matched templates.
-                final_poses = []
+                timer.start()
+                scored_poses = []
                 for template_rank, template_id in enumerate(template_ids):
                     camera_pose = repre.template_cameras_cam_from_model[template_id]
-                    pose_m2c = np.linalg.inv(camera_pose.T_world_from_eye)
-                    R_m2c_coarse = pose_m2c[:3, :3]
-                    t_m2c_coarse = pose_m2c[:3, 3:]
+
+                    camera_K = np.zeros((3,3))
+                    camera_K[0,0] = camera_pose.f[0]
+                    camera_K[1,1] = camera_pose.f[1]
+                    camera_K[0,2] = camera_pose.c[0]
+                    camera_K[1,2] = camera_pose.c[1]
+                    camera_K[2,2] = 1.0
           
-                    final_poses.append(
+                    scored_poses.append(
                         {
-                            "type": "coarse",
-                            "R_m2c": R_m2c_coarse,
-                            "t_m2c": t_m2c_coarse,
-                            "pose_m2c": pose_m2c,
-                            "camera_pose_c2w": camera_pose.T_world_from_eye,
-                            "template_id": template_id,
-                            "template_score": template_scores[template_rank],
-                            "template_rank": template_rank,
+                            "template_id": int(template_id),
+                            "template_score": float(template_scores[template_rank]),
+                            "template_rank": int(template_rank),
+                            "pose_template_mc": camera_pose.T_world_from_eye.tolist(),
+                            "pose_template_cm": np.linalg.inv(camera_pose.T_world_from_eye).tolist(), #this is 100% true
+                            "template_camera_K": camera_K.tolist(),
                         }
                     )
-                times["pose_estimation"] = timer.elapsed("Time for pose estimation")
 
-               
-                if True:
-                    poses_to_store = []
-                    # TODO: implement saving of template ids and scores
-                    path_for_scores = f"results/pose_matches_{object_lid}_{bop_chunk_id}_{bop_im_id}.json"
+                times["pose_processing"] = timer.elapsed("Time for pose processing")
 
-                    for pose_x in final_poses:
-                        poses_to_store.append(
-                            {
-                                "pose_m2c": pose_x["pose_m2c"].tolist(),
-                                "camera_pose_c2w": pose_x["camera_pose_c2w"].tolist(),
-                                "template_id": int(pose_x["template_id"]),
-                                "template_score": float(pose_x["template_score"]),
-                                "template_rank": int(pose_x["template_rank"]),
-                            }
-                        )
-                    with open(path_for_scores, 'w') as f:
-                        json.dump(poses_to_store, f, indent=4)
+                # Store the results
 
-                # For now store only the pose based on the best template.
-                # TODO: in future, look at the correspondence matching
-                for hypothesis_id, final_pose in enumerate(final_poses):
-                    
-                    # Visualizations and saving of results.
-                    vis_tiles = []
+                # store the query and its representation 
+                base_query_dir = os.path.join(bop_config.output_path, "query_features")
+                chunk_query_dir = os.path.join(base_query_dir, opts.object_dataset, str(bop_chunk_id))
+                os.makedirs(chunk_query_dir, exist_ok=True)
 
-                    # Increment hypothesis id by one for each found pose hypothesis.
-                    pose_m2w = None
-                    pose_m2w_coarse = None
+                # make the directories for the query features, cropped projected mask and cropped projected images
+                os.makedirs(os.path.join(chunk_query_dir, "scored_templates"), exist_ok=True)
+                os.makedirs(os.path.join(chunk_query_dir, "virtual_cameras"), exist_ok=True)
+                os.makedirs(os.path.join(chunk_query_dir, "features"), exist_ok=True)
+                os.makedirs(os.path.join(chunk_query_dir, "masks"), exist_ok=True)
+                os.makedirs(os.path.join(chunk_query_dir, "images"), exist_ok=True)
 
-                    # Express the estimated pose as an m2w transformation.
-                    pose_est_m2c = structs.ObjectPose(
-                        R=final_pose["R_m2c"], t=final_pose["t_m2c"]
-                    )
+                # store the scored templates
+                path_for_scores = os.path.join(chunk_query_dir, "scored_templates", f"{bop_im_id:06d}.json")
+                with open(path_for_scores, 'w') as f:
+                    json.dump(scored_poses, f, indent=4)
 
-                    trans_c2w = camera_c2w.T_world_from_eye
+                # store the query feature map
+                torch.save(feature_map_chw, os.path.join(chunk_query_dir, "features", f"{bop_im_id:06d}.pt"))
 
-                    trans_m2w = trans_c2w.dot(misc.get_rigid_matrix(pose_est_m2c))
-                    pose_m2w = structs.ObjectPose(
-                        R=trans_m2w[:3, :3], t=trans_m2w[:3, 3:]
-                    )
+                # store the cropped projected mask
+                mask_modal_tensor = array_to_tensor(mask_modal).to(device)
+                query_points = feature_util.filter_points_by_mask(
+                    grid_points, mask_modal_tensor
+                )
+                torch.save(query_points, os.path.join(chunk_query_dir, "masks", f"{bop_im_id:06d}.pt"))
 
-                    # Get image for visualization.
-                    vis_base_image = (255 * image_np_hwc).astype(np.uint8)                                
 
-                    _ = pose_evaluator.update_without_correspondences(
-                        scene_id=bop_chunk_id,
-                        im_id=bop_im_id,
-                        inst_id=inst_j,
-                        hypothesis_id=hypothesis_id,
-                        obj_lid=object_lid,
-                        object_pose_m2w=pose_m2w,
-                        orig_camera_c2w=orig_camera_c2w,
-                        time_per_inst=times,
-                        score=final_pose["template_score"],
-                    )
-
-                    object_pose_m2w_gt = None
-                    if "gt_anno" in instance and instance["gt_anno"] is not None:
-                        object_pose_m2w_gt = instance["gt_anno"].pose
+                # store the cropped projected image
+                image_pil = Image.fromarray((image_np_hwc * 255).astype(np.uint8))
+                image_pil.save(os.path.join(chunk_query_dir, "images", f"{bop_im_id:06d}.png"))
                 
-                    # Optionall visualize the results.
-                    if opts.vis_results and False:
-                        # TODO: enable visualization when correcpondences are not used
-                        timer.start()
-                        vis_tiles += vis_util.vis_inference_results(
-                            base_image=vis_base_image,
-                            object_repre=repre_np,
-                            object_lid=object_lid,
-                            object_pose_m2w=pose_m2w, # pose_m2w,
-                            object_pose_m2w_gt=object_pose_m2w_gt,
-                            feature_map_chw=feature_map_chw,
-                            feature_map_chw_proj=feature_map_chw_proj,
-                            vis_feat_map=opts.vis_feat_map,
-                            object_box=box_amodal.array_ltrb(),
-                            object_mask=mask_modal,
-                            camera_c2w=camera_c2w,
-                            corresp={},
-                            matched_template_ids=template_ids[:10],
-                            matched_template_scores=template_scores[:10],
-                            best_template_ind=best_pose["template_rank"],
-                            renderer=renderer,
-                            pose_eval_dict=None,
-                            corresp_top_n=opts.vis_corresp_top_n,
-                            inlier_thresh=(opts.pnp_inlier_thresh),
-                            object_pose_m2w_coarse=pose_m2w_coarse,
-                            pose_eval_dict_coarse=None,
-                            # For paper visualizations:
-                            vis_for_paper=opts.vis_for_paper,
-                            extractor=extractor,
-                        )
-                        timer.elapsed("Time for visualization")
+                # store virtual camera info
+                with open(os.path.join(chunk_query_dir, "virtual_cameras", f"{bop_im_id:06d}.json"), 'w') as f:
+                    json.dump({
+                        "camera": camera_c2w.T_world_from_eye.tolist(),
+                        "K_c": [c.item() for c in camera_c2w.c],
+                        "K_f": [f.item() for f in camera_c2w.f],
+                        "cropped_img_size": [camera_c2w.width, camera_c2w.height],
+                    }, f, indent=4)
 
-                    # Assemble visualization tiles to a grid and save it.
-                    if len(vis_tiles):
-                        if repre.feat_vis_projectors[0].pca.n_components == 12:
-                            pca_tiles = np.vstack(vis_tiles[1:5])
-                            vis_tiles = np.vstack([vis_tiles[0]] + vis_tiles[5:])
-                            vis_grid = np.hstack([vis_tiles, pca_tiles])
-                        else:
-                            vis_grid = np.vstack(vis_tiles)
-                        ext = ".png" if opts.vis_for_paper else ".jpg"
-                        vis_path = os.path.join(
-                            output_dir,
-                            f"{bop_chunk_id}_{bop_im_id}_{object_lid}_{inst_j}_0{ext}",
-                        )
-                        inout.save_im(vis_path, vis_grid)
-                        inout.save_im("results/" + vis_path.split("/")[-1], vis_grid)
-                        logger.info(f"Visualization saved to {vis_path}")
 
-                        if opts.debug:
-                            pts_path = os.path.join(
-                                output_dir,
-                                f"{bop_chunk_id}_{bop_im_id}_{object_lid}_{inst_j}_0_vertice_error.ply",
-                            )
-                            vis_util.vis_pointcloud_error(
-                                repre_np,
-                                pose_m2w,
-                                object_pose_m2w_gt,
-                                camera_c2w,
-                                0,
-                                pts_path,
-                            )
-                    break
+        # TODO: this is all the data we need for the multiview optimization.
+
+        # 1. we will generate the best consistent template
+        # 2. use the best consistent template for correspondences
+        # 3. use the correspondences for PnP
+        # 4. use the PnP for pose refinement/featuremetric alignment
+        # 5. somehow do everything in multiview    
 
         # Empty unused GPU cache variables.
         if device == "cuda":
@@ -631,10 +561,10 @@ def infer(opts: InferOpts) -> None:
             logger.info(f"Garbage collection took {time_end - time_start} seconds.")
 
         # Save the pose estimates.          
-        if opts.save_estimates:
-            results_path = os.path.join(output_dir, "estimated-poses.json")
-            logger.info("Saving estimated poses to: {}".format(results_path))
-            pose_evaluator.save_results_json(results_path)
+        # if opts.save_estimates:
+        #     results_path = os.path.join(output_dir, "estimated-poses.json")
+        #     logger.info("Saving estimated poses to: {}".format(results_path))
+        #     pose_evaluator.save_results_json(results_path)
         
 
 def main() -> None:
