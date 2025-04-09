@@ -1,6 +1,6 @@
 {
     "gen_templates_opts": {
-        "version": "v_foundpose",
+        "version": "v1",
         "object_dataset": "ycbv",
         "object_lids": [
             1,

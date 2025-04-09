@@ -13,8 +13,8 @@ from utils import misc, logging, json_util
 logger: logging.Logger = logging.get_logger()
 
 # Load the estimated poses from the json file
-object_dataset = "lmo"
-version = "v1"
+object_dataset = "ycbv"
+version = "v_foundpose_vitl_layer18"
 object_lids = None
 
 signature = misc.slugify(object_dataset) + "_{}".format(version)
@@ -91,7 +91,7 @@ for object_lid in object_lids:
             )
         )
 
-bop_path = os.path.join(output_dir, f"coarse_{object_dataset}-estimated-poses.csv")
+bop_path = os.path.join(output_dir, f"coarse_{object_dataset}-test.csv")
 logger.info("Saving BOP submission file to: {}".format(bop_path))
 with open(bop_path, "wb") as f:
     f.write("\n".join(lines).encode("utf-8"))

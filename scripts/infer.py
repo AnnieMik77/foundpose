@@ -3,6 +3,7 @@
 """Infers pose from objects."""
 
 import datetime
+from copy import deepcopy
 
 import os
 import gc
@@ -13,6 +14,7 @@ from typing import List, NamedTuple, Optional, Tuple
 import cv2
 
 import numpy as np
+# os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 import torch
 
@@ -42,12 +44,13 @@ from utils import (
     logging,
     misc,
     structs,
+    featuremetric_refiner
 )
 
 from utils.structs import AlignedBox2f, PinholePlaneCameraModel
 from utils.misc import warp_depth_image, warp_image
 
-
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
 logger: logging.Logger = logging.get_logger()
 
 
@@ -88,7 +91,9 @@ class InferOpts(NamedTuple):
     pnp_inlier_thresh: float = 10.0
     pnp_refine_lm: bool = True
 
-    final_pose_type: str = "best_coarse"
+    final_pose_type: str = "refined"
+    refiner_align_corners: bool = True
+    eval_full_dataset: bool = False
 
     # Other options.
     save_estimates: bool = True
@@ -142,7 +147,10 @@ def infer(opts: InferOpts) -> None:
     )
 
     # Load BOP test targets
-    test_targets_path = os.path.join(bop_test_split_props["base_path"], "test_targets_bop19.json")
+    if opts.eval_full_dataset:
+        test_targets_path = os.path.join(bop_test_split_props["base_path"], "test_targets_bop19.json")
+    else:
+        test_targets_path = os.path.join(bop_test_split_props["base_path"], "test_targets_bop19_tenth.json")
     targets = inout.load_json(test_targets_path)
 
     scene_ids = dataset_params.get_present_scene_ids(bop_test_split_props)
@@ -201,7 +209,7 @@ def infer(opts: InferOpts) -> None:
         )
         base_repre_dir = os.path.join(bop_config.output_path, "object_repre")
         repre_dir = repre_util.get_object_repre_dir_path(
-            base_repre_dir, opts.version, opts.object_dataset, object_lid
+            base_repre_dir, opts.repre_version, opts.object_dataset, object_lid
         )
         repre = repre_util.load_object_repre(
             repre_dir=repre_dir,
@@ -608,7 +616,7 @@ def infer(opts: InferOpts) -> None:
                 final_poses = []
                
                 if opts.final_pose_type in [
-                    "best_coarse",
+                    "best_coarse", "refined"
                 ]:
 
                     # If no successful coarse pose, continue.
@@ -619,7 +627,7 @@ def infer(opts: InferOpts) -> None:
                     final_pose = None
 
                     if opts.final_pose_type in [
-                        "best_coarse",
+                        "best_coarse", "refined"
                     ]:
                         final_pose = coarse_poses[best_coarse_pose_id]
 
@@ -630,6 +638,49 @@ def infer(opts: InferOpts) -> None:
                     raise ValueError(f"Unknown final pose type {opts.final_pose_type}")
 
                 times["final_select"] = timer.elapsed("Time for selecting final pose")
+
+                # Keep best coarse pose
+                coarse = deepcopy(final_poses[0])
+
+                if opts.final_pose_type == "refined":
+                    timer.start()
+                    
+                    top_coarse_pred = final_poses[0]
+
+                    # Get coarse pose as initial pose.
+                    initial_pose = structs.ObjectPose(
+                            R=top_coarse_pred["R_m2c"],
+                            t=top_coarse_pred["t_m2c"]
+                        )
+
+                    # Get the best template id from correspondences
+                    top_corresp = corresp[top_coarse_pred["corresp_id"]]
+                    best_template_id = top_corresp["template_id"].item()
+
+                    # Get template data from repre
+                    templ_mask = torch.where(repre.feat_to_template_ids==best_template_id)[0]
+                    template_masked_features_ref = repre.feat_vectors[templ_mask].unsqueeze(0)
+                    template_vertices_ref = repre.vertices[templ_mask].unsqueeze(0)
+
+                    # Get the feature map for the query
+                    feature_map_chw_proj_ref = feature_map_chw_proj.unsqueeze(0)
+                    feature_map_chw_proj_ref = torch.nn.functional.interpolate(feature_map_chw_proj_ref,(opts.crop_size[0], opts.crop_size[1]), mode='bilinear', align_corners=opts.refiner_align_corners)
+                    
+                    # Run the refinement
+                    optimized_pose, failed = featuremetric_refiner.refine(
+                        template_vertices_ref=template_vertices_ref,
+                        template_masked_features_ref=template_masked_features_ref,
+                        feature_map_chw_proj_ref=feature_map_chw_proj_ref,
+                        initial_pose=initial_pose,
+                        camera_c2w=camera_c2w,
+                        image_size = opts.crop_size,
+                    )
+
+                    # Update final pose with the refined pose     
+                    final_poses[0]["R_m2c"] = optimized_pose.R
+                    final_poses[0]["t_m2c"] = optimized_pose.t.reshape(3, 1)
+
+                    times["featuremetric_refine"] = timer.elapsed("Time for featuremetric refine")
 
                 # Print summary.
                 if len(final_poses) > 0:
@@ -657,11 +708,20 @@ def infer(opts: InferOpts) -> None:
                     pose_est_m2c = structs.ObjectPose(
                         R=final_pose["R_m2c"], t=final_pose["t_m2c"]
                     )
+                    coarse_est_m2c = structs.ObjectPose(
+                        R=coarse["R_m2c"], t=coarse["t_m2c"]
+                    )
+
                     trans_c2w = camera_c2w.T_world_from_eye
 
                     trans_m2w = trans_c2w.dot(misc.get_rigid_matrix(pose_est_m2c))
+                    coarse_trans_m2w = trans_c2w.dot(misc.get_rigid_matrix(coarse_est_m2c))
+
                     pose_m2w = structs.ObjectPose(
                         R=trans_m2w[:3, :3], t=trans_m2w[:3, 3:]
+                    )
+                    pose_m2w_coarse = structs.ObjectPose(
+                        R=coarse_trans_m2w[:3, :3], t=coarse_trans_m2w[:3, 3:]
                     )
 
                     # Get image for visualization.

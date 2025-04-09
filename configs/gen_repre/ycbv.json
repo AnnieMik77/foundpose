@@ -1,7 +1,7 @@
 {
     "gen_repre_opts": {
         "version": "v_foundpose_vitl_layer18",
-        "templates_version": "v_foundpose",
+        "templates_version": "v1",
         "object_dataset": "ycbv",
         "object_lids": [
             1,
