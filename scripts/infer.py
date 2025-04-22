@@ -3,6 +3,7 @@
 """Infers pose from objects."""
 
 import datetime
+from copy import deepcopy
 
 import os
 import gc
@@ -13,6 +14,7 @@ from typing import List, NamedTuple, Optional, Tuple
 import cv2
 
 import numpy as np
+# os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 import torch
 
@@ -43,7 +45,7 @@ from utils import (
     logging,
     misc,
     structs,
-    featuremetric_refine
+    featuremetric_refiner
 )
 
 from utils.structs import AlignedBox2f, PinholePlaneCameraModel
@@ -91,7 +93,9 @@ class InferOpts(NamedTuple):
     pnp_inlier_thresh: float = 10.0
     pnp_refine_lm: bool = True
 
-    final_pose_type: str = "best_coarse"
+    final_pose_type: str = "refined"
+    refiner_align_corners: bool = True
+    eval_full_dataset: bool = False
 
     # Other options.
     save_estimates: bool = True
@@ -145,7 +149,10 @@ def infer(opts: InferOpts) -> None:
     )
 
     # Load BOP test targets
-    test_targets_path = os.path.join(bop_test_split_props["base_path"], "test_targets_bop19.json")
+    if opts.eval_full_dataset:
+        test_targets_path = os.path.join(bop_test_split_props["base_path"], "test_targets_bop19.json")
+    else:
+        test_targets_path = os.path.join(bop_test_split_props["base_path"], "test_targets_bop19_tenth.json")
     targets = inout.load_json(test_targets_path)
 
     scene_ids = dataset_params.get_present_scene_ids(bop_test_split_props)
@@ -611,7 +618,7 @@ def infer(opts: InferOpts) -> None:
                 final_poses = []
                
                 if opts.final_pose_type in [
-                    "best_coarse",
+                    "best_coarse", "refined"
                 ]:
 
                     # If no successful coarse pose, continue.
@@ -622,7 +629,7 @@ def infer(opts: InferOpts) -> None:
                     final_pose = None
 
                     if opts.final_pose_type in [
-                        "best_coarse",
+                        "best_coarse", "refined"
                     ]:
                         final_pose = coarse_poses[best_coarse_pose_id]
 
@@ -634,82 +641,49 @@ def infer(opts: InferOpts) -> None:
 
                 times["final_select"] = timer.elapsed("Time for selecting final pose")
 
-                timer.start()
+                # Keep best coarse pose
                 coarse = deepcopy(final_poses[0])
-                
-                featuremetric_align = True
-                if featuremetric_align:
+
+                if opts.final_pose_type == "refined":
+                    timer.start()
+                    
+                    top_coarse_pred = final_poses[0]
+
+                    # Get coarse pose as initial pose.
                     initial_pose = structs.ObjectPose(
-                            R=final_poses[0]["R_m2c"],
-                            t=final_poses[0]["t_m2c"]
+                            R=top_coarse_pred["R_m2c"],
+                            t=top_coarse_pred["t_m2c"]
                         )
-                    initial_pose = misc.get_rigid_matrix(initial_pose)
 
-                    # Get the best correspondences
-                    top_corresp = corresp[final_poses[0]["corresp_id"]]
+                    # Get the best template id from correspondences
+                    top_corresp = corresp[top_coarse_pred["corresp_id"]]
+                    best_template_id = top_corresp["template_id"].item()
 
-                    # Filter out the inliers based on PnP     
-                    use_pnp = False
-                    if use_pnp:
-                        inliers = final_poses[0]["inliers"].flatten()
-                        template_masked_features = top_corresp["features"][inliers]
-                        template_vertices = top_corresp["coord_3d"][inliers]
-                    else:
-                        best_template_id = corresp[final_poses[0]["corresp_id"]]["template_id"].item()
-                        templ_mask = torch.where(repre.feat_to_template_ids==best_template_id)[0]
-                        template_masked_features = repre.feat_vectors[templ_mask]
-                        template_vertices = repre.vertices[templ_mask]
+                    # Get template data from repre
+                    templ_mask = torch.where(repre.feat_to_template_ids==best_template_id)[0]
+                    template_masked_features_ref = repre.feat_vectors[templ_mask].unsqueeze(0)
+                    template_vertices_ref = repre.vertices[templ_mask].unsqueeze(0)
 
-                    # Virtual camera intrinsics
-                    camera_K = camera_c2w.uv_to_window_matrix()
-                    # create dir for saving
-                    os.makedirs("featuremetric_refine", exist_ok=True)
-                    np.save("featuremetric_refine/camera_K.npy", camera_K)
-                    np.save("featuremetric_refine/initial_pose.npy", initial_pose)
-                    torch.save(template_masked_features, "featuremetric_refine/template_masked_features.pt")
-                    torch.save(template_vertices, "featuremetric_refine/template_vertices.pt")
-                    torch.save(feature_map_chw_proj, "featuremetric_refine/image_tensor.pt")
-                                 
-                    optimized_pose,tried_poses_refinement,residuals_refinement =  featuremetric_refine.minimize_with_scipy(
-                        initial_pose = initial_pose,
-                        template_masked_features = template_masked_features,
-                        template_feat_to_vertex_mapping = None, #template_feat_to_vertex_mapping,
-                        template_vertices = template_vertices,
-                        query_features = feature_map_chw_proj,
-                        virtual_camera_K = camera_K,
-                        max_iter=15,
-                        verbose=0
+                    # Get the feature map for the query
+                    feature_map_chw_proj_ref = feature_map_chw_proj.unsqueeze(0)
+                    feature_map_chw_proj_ref = torch.nn.functional.interpolate(feature_map_chw_proj_ref,(opts.crop_size[0], opts.crop_size[1]), mode='bilinear', align_corners=opts.refiner_align_corners)
+                    
+                    # Run the refinement
+                    optimized_pose, failed = featuremetric_refiner.refine(
+                        template_vertices_ref=template_vertices_ref,
+                        template_masked_features_ref=template_masked_features_ref,
+                        feature_map_chw_proj_ref=feature_map_chw_proj_ref,
+                        initial_pose=initial_pose,
+                        camera_c2w=camera_c2w,
+                        image_size = opts.crop_size,
                     )
-                    if opts.vis_results:
-                        from utils import vis_refinement
 
-                        poses_in_original_camera = []
-                        original_camera_pose_cw = np.linalg.inv(orig_camera_c2w.T_world_from_eye)
-                        virtual_camera_pose_wc = camera_c2w.T_world_from_eye
+                    # Update final pose with the refined pose     
+                    final_poses[0]["R_m2c"] = optimized_pose.R
+                    final_poses[0]["t_m2c"] = optimized_pose.t.reshape(3, 1)
 
-                        for pose in tried_poses_refinement:
-                            new_pose = original_camera_pose_cw @ virtual_camera_pose_wc @ np.array(pose)
-                            poses_in_original_camera.append(new_pose)
+                    times["featuremetric_refine"] = timer.elapsed("Time for featuremetric refine")
 
-                        original_camera_K = np.array([[orig_camera_c2w.f[0], 0, orig_camera_c2w.c[0]], [0, orig_camera_c2w.f[1], orig_camera_c2w.c[1]], [0, 0, 1]])
-                        
-                        vis_refinement.poses_giff_with_residuals(   
-                            poses_in_original_camera,
-                            residuals_refinement,
-                            template_vertices,
-                            img_shape=(orig_image_np_hwc.shape[1], orig_image_np_hwc.shape[0]),
-                            camera_K=original_camera_K,
-                            obj_id=object_lid,
-                            output_path="poses_asdf.gif",
-                            background_img=orig_image_np_hwc
-                        )
-                        
-                    R = optimized_pose[:3,:3]
-                    t = optimized_pose[:3,3].reshape(3,1)
-                    final_poses[0]["R_m2c"] = R
-                    final_poses[0]["t_m2c"] = t
-
-                times["featuremetric_refine"] = timer.elapsed("Time for featuremetric refine")
                 # Print summary.
                 if len(final_poses) > 0:
                     # Divide to the number of hypothesis because this is the real time needed per hypothesis.
@@ -751,7 +725,6 @@ def infer(opts: InferOpts) -> None:
                     pose_m2w_coarse = structs.ObjectPose(
                         R=coarse_trans_m2w[:3, :3], t=coarse_trans_m2w[:3, 3:]
                     )
-
 
                     # Get image for visualization.
                     vis_base_image = (255 * image_np_hwc).astype(np.uint8)

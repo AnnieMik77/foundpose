@@ -85,7 +85,7 @@ Edit the ```env_vars.sh``` file as follows:
 export REPO_PATH=/path/to/foundpose/repository  # Replace with the path to the FoundPose repository.
 export BOP_PATH=/path/to/bop/datasets  # Replace with the path to BOP datasets (https://bop.felk.cvut.cz/datasets).
 
-export PYTHONPATH=$REPO_PATH:$REPO_PATH/external/bop_toolkit:$REPO_PATH/external/dinov2
+export PYTHONPATH=$REPO_PATH:$REPO_PATH/external/bop_toolkit:$REPO_PATH/external/dinov2:$REPO_PATH/external/pixloc
 ```
 
 Activate the conda environment:
@@ -168,6 +168,13 @@ Note: We provide pose estimations based on the provided representations for LM-O
 Create a BOP submission file by running the command by specifying the dataset, version and object ids within the script: 
 ```
 python scripts/prepare_bop_submission.py
+```
+
+### 5. BOP Evaluation <a name="bop-evaluation"></a>
+
+Evaluate the BOP submission file by running the command. First specify the path to the csv and the eval_dir within the script:
+```
+python scripts/results_bop_evaluate.py
 ```
 
 We report the results produced by this open-source repository and compare them with the published results. The main difference between the implementation used to get the scores reported in the paper and the open-source implementation is the renderer (for the paper we used an internal renderer).

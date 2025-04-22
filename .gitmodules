@@ -4,3 +4,6 @@
 [submodule "external/bop_toolkit"]
 	path = external/bop_toolkit
 	url = https://github.com/thodan/bop_toolkit.git
+[submodule "external/pixloc"]
+	path = external/pixloc
+	url = https://github.com/AnnieMik77/pixloc.git

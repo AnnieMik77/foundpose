@@ -33,7 +33,6 @@ from utils.renderer_base import RenderType
 import os
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
-
 class GenTemplatesOpts(NamedTuple):
     """Options that can be specified via the command line."""
 
