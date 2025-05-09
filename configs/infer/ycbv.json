@@ -1,8 +1,8 @@
 {
     "infer_opts": {
-        "version": "v_foundpose_vitl_layer18",
+        "version": "v_refine_happy",
         "object_dataset": "ycbv",
-        "repre_version": "v_foundpose_vitl_layer18",
+        "repre_version": "v_foundpose_vitl_layer18_withfull",
         "crop_rel_pad": 0.2,
         "crop_size": [
             420,

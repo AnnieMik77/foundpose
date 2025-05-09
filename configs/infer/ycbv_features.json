@@ -2,7 +2,7 @@
     "infer_opts": {
         "version": "v_features",
         "object_dataset": "ycbv",
-        "repre_version": "v_feautures",
+        "repre_version": "v_features_fixed_reshape",
         "crop_rel_pad": 0.2,
         "crop_size": [
             420,
