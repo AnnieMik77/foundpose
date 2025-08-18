@@ -93,7 +93,9 @@ def generate_raw_repre(
     metadata = json_util.load_json(metadata_path)
 
     # Prepare structures for storing data.
+    feat_vectors_full_list = []
     feat_vectors_list = []
+    query_pts_list = []
     feat_to_vertex_ids_list = []
     vertices_in_model_list = []
     feat_to_template_ids_list = []
@@ -162,7 +164,9 @@ def generate_raw_repre(
 
         # Extract features from the current template.
         (
+            feat_vectors_full,
             feat_vectors,
+            query_pts,
             feat_to_vertex_ids,
             vertices_in_model,
         ) = feature_util.get_visual_features_registered_in_3d(
@@ -180,7 +184,13 @@ def generate_raw_repre(
         timer.start()
 
         # Store data.
+        store_full_features = False
+        if store_full_features:
+            feat_vectors_full_list.append(feat_vectors_full)
+        else:
+            feat_vectors_full_list.append([])
         feat_vectors_list.append(feat_vectors)
+        query_pts_list.append(query_pts)
         feat_to_vertex_ids_list.append(feat_to_vertex_ids)
         vertices_in_model_list.append(vertices_in_model)
         feat_to_template_ids = template_id * torch.ones(
@@ -208,6 +218,8 @@ def generate_raw_repre(
     return repre_util.FeatureBasedObjectRepre(
         vertices=torch.cat(vertices_in_model_list),
         feat_vectors=torch.cat(feat_vectors_list),
+        feat_vectors_full=torch.stack(feat_vectors_full_list),
+        query_pts=torch.cat(query_pts_list),  
         feat_opts=repre_util.FeatureOpts(extractor_name=opts.extractor_name),
         feat_to_vertex_ids=torch.cat(feat_to_vertex_ids_list),
         feat_to_template_ids=torch.cat(feat_to_template_ids_list),

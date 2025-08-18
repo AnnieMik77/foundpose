@@ -97,7 +97,7 @@ def filter_points_by_mask(points: torch.Tensor, mask: torch.Tensor) -> torch.Ten
 
 
 def sample_feature_map_at_points(
-    feature_map_chw: torch.Tensor, points: torch.Tensor, image_size: Tuple[int, int]
+    feature_map_chw: torch.Tensor, points: torch.Tensor, image_size: Tuple[int, int], align_corners: bool = False
 ) -> torch.Tensor:
     """Samples a feature map at the specified 2D coordinates.
 
@@ -121,7 +121,7 @@ def sample_feature_map_at_points(
     features = torch.nn.functional.grid_sample(
         feature_map_chw.unsqueeze(0),
         query_coords,
-        align_corners=False,
+        align_corners=align_corners,
     )
 
     # Reshape the feature vectors to (N, C).
@@ -227,10 +227,19 @@ def get_visual_features_registered_in_3d(
         image_size=(image_chw.shape[-1], image_chw.shape[-2]),
     ).detach()
 
+    # Reshape the feature vectors to hw*c
+    feature_map_chw = feature_map_chw.detach()
+    feature_map_hwc = feature_map_chw.permute(1, 2, 0).reshape(
+        feature_map_chw.shape[1] * feature_map_chw.shape[2],
+        feature_map_chw.shape[0]
+    )
+
     timer.elapsed(f"Time for feature sampling.")
 
     return (
+        feature_map_hwc,
         feat_vectors,
+        query_points,
         vertex_ids,
         vertices_in_model,
     )
