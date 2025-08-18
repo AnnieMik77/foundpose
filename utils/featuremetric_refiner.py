@@ -198,7 +198,8 @@ def refine_multiview_wrapper(
         initial_pose_m2w: ObjectPose,
         templates: List[FeatureRepre],
         queries: List[FeatureRepre],
-        cameras_c2w: List[PinholePlaneCameraModel]
+        cameras_c2w: List[PinholePlaneCameraModel], 
+        **kwargs
     ) -> Tuple[np.array, bool]:
     """
     Refine the pose using the ClassicOptimizer.
@@ -248,7 +249,7 @@ def refine_multiview_wrapper(
     cam_poses_w2c = Pose.from_4x4mat(torch.stack(cam_poses))
 
     # Refine
-    refined_m2w, _ = refine_multiview(
+    refined_m2w, failed, cost_seq = refine_multiview(
         template_vertices_ref = template_vertices_ref,
         template_masked_features_ref = template_masked_features_ref,
         mask = mask,
@@ -256,7 +257,11 @@ def refine_multiview_wrapper(
         initial_pose_m2w = initial_pose_m2w,
         cameras = cam_intrinsics,
         poses_w2c = cam_poses_w2c,
+        **kwargs
     )
+
+    for s in cost_seq:
+        print(s)
 
     # Get the optimized pose
     optimized_pose_m2w = ObjectPose(
@@ -264,7 +269,7 @@ def refine_multiview_wrapper(
                             t=refined_m2w.t.detach().cpu()
                         )
     
-    return optimized_pose_m2w,None
+    return optimized_pose_m2w, failed, cost_seq
         
 def refine_multiview(
         template_vertices_ref: Tensor,
@@ -274,6 +279,8 @@ def refine_multiview(
         initial_pose_m2w: Pose,
         cameras: Camera,
         poses_w2c: Pose,
+        num_iters: int = 30,
+        **kwargs
       ) -> Tuple[Pose, Tensor]:
     """
     Refine the pose using the ClassicOptimizer.
@@ -289,8 +296,9 @@ def refine_multiview(
         Tuple[Pose, Tensor]: Optimized pose and failure flag.
     """
     # Create an instance of ClassicOptimizer
+    print(num_iters)
     conf = {
-        "num_iters": 30,
+        "num_iters": num_iters,
         "lambda_": 1e-2,
         "lambda_max": 1e4,
         "normalize_features": True,
@@ -302,9 +310,10 @@ def refine_multiview(
         "loss_fn": "scaled_barron(-5, 0.5)",
     }
     optimizer = ClassicMultiviewOptimizer(conf)
+    optimizer.eval()
 
     # Run the optimizer
-    T_pose, failed = optimizer.run(
+    T_pose, failed, cost_seq = optimizer.run(
         p3D=template_vertices_ref,
         F_ref=template_masked_features_ref,
         F_query=feature_map_chw_proj_ref,

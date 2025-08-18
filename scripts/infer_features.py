@@ -504,7 +504,9 @@ def infer(opts: InferOpts) -> None:
 
                 # store the query and its representation 
                 base_query_dir = os.path.join(bop_config.output_path, "query_features")
-                chunk_query_dir = os.path.join(base_query_dir, opts.object_dataset, str(bop_chunk_id))
+                object_query_dir = os.path.join(base_query_dir, opts.object_dataset, str(object_lid))
+                os.makedirs(object_query_dir, exist_ok=True)
+                chunk_query_dir = os.path.join(object_query_dir, str(bop_chunk_id))
                 os.makedirs(chunk_query_dir, exist_ok=True)
 
                 # make the directories for the query features, cropped projected mask and cropped projected images
@@ -519,7 +521,7 @@ def infer(opts: InferOpts) -> None:
                 with open(path_for_scores, 'w') as f:
                     json.dump(scored_poses, f, indent=4)
 
-                # store the query feature map
+                # store the query feature map # bug???
                 torch.save(feature_map_chw, os.path.join(chunk_query_dir, "features", f"{bop_im_id:06d}.pt"))
 
                 # store the cropped projected mask
@@ -531,6 +533,7 @@ def infer(opts: InferOpts) -> None:
 
 
                 # store the cropped projected image
+                from PIL import Image
                 image_pil = Image.fromarray((image_np_hwc * 255).astype(np.uint8))
                 image_pil.save(os.path.join(chunk_query_dir, "images", f"{bop_im_id:06d}.png"))
                 

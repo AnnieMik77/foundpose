@@ -676,6 +676,9 @@ def infer(opts: InferOpts) -> None:
                         initial_pose_m2c=initial_pose,
                         camera_c2w=camera_c2w,
                     )
+                    if failed:
+                        logger.info("Refinement failed, skipping.")
+                        continue
 
                     # Update final pose with the refined pose     
                     final_poses[0]["R_m2c"] = optimized_pose.R
