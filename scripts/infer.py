@@ -667,7 +667,7 @@ def infer(opts: InferOpts) -> None:
                     feature_map_chw_proj_ref = torch.nn.functional.interpolate(feature_map_chw_proj_ref,(opts.crop_size[0], opts.crop_size[1]), mode='bilinear', align_corners=opts.refiner_align_corners)
                     
                     # Run the refinement
-                    optimized_pose, failed = featuremetric_refiner.refine_fp_wrapper(
+                    optimized_pose, failed = featuremetric_refiner.refine(
                         template_vertices_ref=template_vertices_ref,
                         template_masked_features_ref=template_masked_features_ref,
                         feature_map_chw_proj_ref=feature_map_chw_proj_ref,

@@ -137,6 +137,7 @@ def establish_correspondences(
         coord_2d = query_points[match_query_ids]
         coord_2d_ids = match_query_ids
         assert object_repre.vertices is not None
+        features = object_repre.feat_vectors[match_obj_feat_ids]
         coord_3d = object_repre.vertices[match_obj_feat_ids]
         coord_conf = match_scores
         full_query_nn_dists = match_dists
@@ -148,6 +149,7 @@ def establish_correspondences(
             "template_score": template_scores[template_counter],
             "coord_2d": coord_2d,
             "coord_2d_ids": coord_2d_ids,
+            "features": features,
             "coord_3d": coord_3d,
             "coord_conf": coord_conf,
             "nn_vertex_ids": nn_vertex_ids,

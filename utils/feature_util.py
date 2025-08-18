@@ -156,6 +156,60 @@ def lift_2d_points_to_3d(
     return points_3d_in_cam
 
 
+def get_image_visual_features(
+    image_chw: torch.Tensor,
+    extractor: torch.nn.Module,
+    debug: bool = False,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+
+    device = image_chw.device
+
+    timer = misc.Timer(enabled=debug)
+
+    # Extract feature vectors.
+    timer.start()
+    image_bchw = image_chw.unsqueeze(0)
+
+    # Extract feature map at the current image scale.
+    extractor_output = extractor(image_bchw)
+    feature_map_chw = extractor_output["feature_maps"][0]
+    feature_map_chw = feature_map_chw.to(device)
+
+    # Prepare the full feature map
+    feature_map_chw = feature_map_chw.detach()
+    feature_map_hwc = feature_map_chw.permute(1, 2, 0).reshape(
+        feature_map_chw.shape[1] * feature_map_chw.shape[2],
+        feature_map_chw.shape
+    )
+ 
+
+    timer.elapsed(f"Time for feature extraction")
+
+    return feature_map_hwc
+
+def downscale_query_points(
+    feature_map_chw: torch.Tensor, points: torch.Tensor, image_size: Tuple[int, int]
+) -> torch.Tensor:
+    """Samples a feature map at the specified 2D coordinates.
+
+    Args:
+        feature_map_chw: A tensor of shape (C, H, W).
+        points: A tensor of shape (N, 2) where N is the number of points.
+        image_size: Size of the input image expressed as (image_width, image_height).
+            2D coordinates of the points are expressed in the image coordinates.
+    Returns:
+        A tensor of shape (num_points, 2) containing the query points
+        expressed in the feature map coordinates.
+    """
+
+    # Normalize the 2D coordinates to [0, 1].
+    uv = torch.div(1.0, torch.as_tensor(image_size)).to(points.device) * points
+
+    # Rescale the 2D coordinates to the feature map size.
+    uv[:, 0] = uv[:, 0] * feature_map_chw.shape[1]
+    uv[:, 1] = uv[:, 1] * feature_map_chw.shape[2]
+    return uv.int()
+
 def get_visual_features_registered_in_3d(
     image_chw: torch.Tensor,
     depth_image_hw: torch.Tensor,
