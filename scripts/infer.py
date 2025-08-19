@@ -14,8 +14,7 @@ from typing import List, NamedTuple, Optional, Tuple
 import cv2
 
 import numpy as np
-# os.environ['CUDA_VISIBLE_DEVICES'] = "0"
-
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 import torch
 
 from utils.misc import array_to_tensor, tensor_to_array, tensors_to_arrays
@@ -91,7 +90,7 @@ class InferOpts(NamedTuple):
     pnp_inlier_thresh: float = 10.0
     pnp_refine_lm: bool = True
 
-    final_pose_type: str = "refined"
+    final_pose_type: str = "refined" # refined or best_coarse
     refiner_align_corners: bool = True
     eval_full_dataset: bool = False
 
@@ -192,7 +191,7 @@ def infer(opts: InferOpts) -> None:
             version = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         signature = misc.slugify(opts.object_dataset) + "_{}".format(version)
         output_dir = os.path.join(
-            bop_config.output_path, "inference", signature, str(object_lid)
+            bop_config.output_path, "inference", "improvement_experiments", signature, str(object_lid)
         )
         os.makedirs(output_dir, exist_ok=True)
 

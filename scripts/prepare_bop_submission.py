@@ -14,12 +14,12 @@ logger: logging.Logger = logging.get_logger()
 
 # Load the estimated poses from the json file
 object_dataset = "ycbv"
-version = "v_foundpose_vitl_layer18"
+version = "no_refinement"
 object_lids = None
 
 signature = misc.slugify(object_dataset) + "_{}".format(version)
 output_dir = os.path.join(
-    bop_config.output_path, "inference", signature,
+    bop_config.output_path, "inference", "improvement_experiments", signature,
 )
 
 if object_lids is None:
