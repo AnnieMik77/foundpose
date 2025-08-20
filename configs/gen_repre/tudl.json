@@ -2,16 +2,11 @@
     "gen_repre_opts": {
         "version": "v_foundpose_vitl_layer18",
         "templates_version": "v1",
-        "object_dataset": "lmo",
+        "object_dataset": "tudl",
         "object_lids": [
             1,
-            5,
-            6,
-            8,
-            9,
-            10,
-            11,
-            12
+            2,
+            3
         ],
         "extractor_name": "dinov2_version=vitl14-reg_stride=14_facet=token_layer=18_logbin=0_norm=1",
         "grid_cell_size": 14.0,
