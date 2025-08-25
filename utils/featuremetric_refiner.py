@@ -14,6 +14,7 @@ def refine(
         template_masked_features_ref: Tensor,
         feature_map_chw_proj_ref: Tensor,
         camera_c2w: PinholePlaneCameraModel,
+        num_iters: int = 30
 ) -> Tuple[ObjectPose, Tensor]:
     """
     TODO: this may be batched
@@ -59,6 +60,7 @@ def refine(
             pad=4,
         ),
         "loss_fn": "scaled_barron(-5, 0.5)",
+        "num_iters": num_iters
     }
 
     # Optimize the pose
@@ -89,6 +91,7 @@ def refine_multiview(
         template_masked_features_ref: List[Tensor],
         feature_map_chw_proj_ref: List[Tensor],
         cameras: List[PinholePlaneCameraModel],
+        num_iters: int = 30
       ) -> Tuple[Pose, Tensor]:
     """
     Refine the pose using the ClassicOptimizer. M is number of views, N is number of registered features per view.
@@ -127,12 +130,13 @@ def refine_multiview(
             mask.append(torch.ones(max_len, dtype=torch.bool))
 
 
-    template_vertices_ref = torch.stack(template_vertices_ref, dim=0)
-    template_masked_features_ref = torch.stack(template_masked_features_ref, dim=0)
-    mask = torch.stack(mask, dim=0).to(device=template_vertices_ref.device)
+    template_vertices_ref = torch.stack(template_vertices_ref, dim=0) # Shape (M, N, 3)
+    template_masked_features_ref = torch.stack(template_masked_features_ref, dim=0) # Shape (M, N, C)
+    mask = torch.stack(mask, dim=0).to(device=template_vertices_ref.device) # Shape (M, N)
 
     # Convert feature maps to tensor for batch processing
-    feature_map_chw_proj_ref = torch.stack(feature_map_chw_proj_ref, dim=0)
+    feature_map_chw_proj_ref = torch.stack(feature_map_chw_proj_ref, dim=0) # Shape (M, C, H, W)
+    feature_map_chw_proj_ref = feature_map_chw_proj_ref.detach().requires_grad_(False)
 
     # Convert cameras to Pixloc format
     cam_intrinsics = []
@@ -157,7 +161,7 @@ def refine_multiview(
 
     # Create an instance of ClassicOptimizer
     conf = {
-        "num_iters": 30,
+        "num_iters": num_iters,
         "lambda_": 1e-2,
         "lambda_max": 1e4,
         "normalize_features": True,
@@ -166,7 +170,7 @@ def refine_multiview(
             mode='linear',
             pad=4,
         ),
-        "loss_fn": "scaled_barron(-5, 0.5)",
+        "loss_fn": "scaled_barron(-5, 0.5)"
     }
     optimizer = ClassicMultiviewOptimizer(conf)
     optimizer.eval()
