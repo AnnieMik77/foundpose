@@ -105,8 +105,8 @@ def refine_multiview(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Convert initial pose to Pixloc format
-    initial_pose_m2c = misc.get_rigid_matrix(initial_pose_m2w)
-    initial_pose_m2c = torch.tensor(initial_pose_m2c, dtype=torch.float32)
+    initial_pose_m2w = misc.get_rigid_matrix(initial_pose_m2w)
+    initial_pose_m2w = torch.tensor(initial_pose_m2w, dtype=torch.float32)
     initial_pose_m2w = Pose.from_4x4mat(initial_pose_m2w).to(device).to(torch.float32)
 
     # Convert all list of tensors to padded, for batch processing
