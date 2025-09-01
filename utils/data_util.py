@@ -27,7 +27,7 @@ class DatasetOpts(NamedTuple):
     num_workers: The number of workers.
     """
 
-    crop_image_center: bool = True# False
+    crop_image_center: bool = True # False
     center_crop_size: Tuple[int, int] = (630, 476)  # For DINOv2 with 14x14 patches.
     add_depth: bool = True
     convert_rgb_to_mono: bool = False

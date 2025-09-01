@@ -670,10 +670,12 @@ def infer(opts: InferOpts) -> None:
                         template_vertices_ref=template_vertices_ref,
                         template_masked_features_ref=template_masked_features_ref,
                         feature_map_chw_proj_ref=feature_map_chw_proj_ref,
-                        initial_pose=initial_pose,
+                        initial_pose_m2c=initial_pose,
                         camera_c2w=camera_c2w,
-                        image_size = opts.crop_size,
                     )
+                    if failed:
+                        logger.info("Refinement failed, skipping.")
+                        continue
 
                     # Update final pose with the refined pose     
                     final_poses[0]["R_m2c"] = optimized_pose.R
@@ -805,7 +807,7 @@ def infer(opts: InferOpts) -> None:
                             base_image=vis_base_image,
                             object_repre=repre_np,
                             object_lid=object_lid,
-                            object_pose_m2w=pose_m2w, # pose_m2w,
+                            object_pose_m2w=pose_m2w,
                             object_pose_m2w_gt=object_pose_m2w_gt,
                             feature_map_chw=feature_map_chw,
                             feature_map_chw_proj=feature_map_chw_proj,

@@ -40,8 +40,14 @@ class FeatureBasedObjectRepre:
     # 3D vertex normals of shape (num_vertices, 3).
     vertex_normals: Optional[torch.Tensor] = None
 
+    # Feature vectors of shape (num_templates, num_features, feat_dims).
+    feat_vectors_full: Optional[torch.Tensor] = None
+
     # Feature vectors of shape (num_features, feat_dims).
     feat_vectors: Optional[torch.Tensor] = None
+
+    # Feature vectors of shape (num_features).
+    query_pts: Optional[torch.Tensor] = None
 
     # Feature options.
     feat_opts: Optional[FeatureOpts] = None
@@ -122,8 +128,7 @@ def save_object_repre(
 
 
     object_dict["feat_opts"] = repre.feat_opts._asdict()
-    object_dict["template_desc_opts"] = repre.template_desc_opts._asdict()
-
+    object_dict["template_desc_opts"] = repre.template_desc_opts._asdict() if repre.template_desc_opts is not None else None
 
     object_dict["feat_raw_projectors"] = []
     for projector in repre.feat_raw_projectors:

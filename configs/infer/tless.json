@@ -1,6 +1,6 @@
 {
     "infer_opts": {
-        "version": "refinement_align",
+        "version": "v_foundpose_vitl_layer18",
         "object_dataset": "tless",
         "repre_version": "v_foundpose_vitl_layer18",
         "crop_rel_pad": 0.2,
