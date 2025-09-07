@@ -142,7 +142,7 @@ def infer(opts: InferOpts) -> None:
     bop_test_split_props = dataset_params.get_split_params(
         datasets_path=datasets_path,
         dataset_name=opts.object_dataset,
-        split="test"
+        split="val"
     )
 
     # Load BOP test targets
@@ -166,11 +166,14 @@ def infer(opts: InferOpts) -> None:
     scene_gts = {}
     scene_gts_info = {}
     scene_cameras = {}
+
+    eval_modality, eval_sensor = bop_test_split_props["eval_modality"], bop_test_split_props["eval_sensor"]
+
     for scene_id in scene_im_ids.keys():
-        scene_cameras[scene_id] = data_util.load_chunk_cameras(bop_test_split_props["scene_camera_tpath"].format(scene_id=scene_id), bop_test_split_props["im_size"])
-        scene_gts[scene_id] = data_util.load_chunk_gts(bop_test_split_props["scene_gt_tpath"].format(scene_id=scene_id),opts.object_dataset)
+        scene_cameras[scene_id] = data_util.load_chunk_cameras(bop_test_split_props[f"scene_camera_{eval_modality}_{eval_sensor}_tpath"].format(scene_id=scene_id), bop_test_split_props["im_size"][eval_sensor])
+        scene_gts[scene_id] = data_util.load_chunk_gts(bop_test_split_props[f"scene_gt_{eval_modality}_{eval_sensor}_tpath"].format(scene_id=scene_id),opts.object_dataset)
         scene_gts_info[scene_id] = json_util.load_json(
-            bop_test_split_props["scene_gt_info_tpath"].format(scene_id=scene_id),
+            bop_test_split_props[f"scene_gt_info_{eval_modality}_{eval_sensor}_tpath"].format(scene_id=scene_id),
             keys_to_int=True,
         )
 
@@ -670,12 +673,10 @@ def infer(opts: InferOpts) -> None:
                         template_vertices_ref=template_vertices_ref,
                         template_masked_features_ref=template_masked_features_ref,
                         feature_map_chw_proj_ref=feature_map_chw_proj_ref,
-                        initial_pose_m2c=initial_pose,
+                        initial_pose=initial_pose,
                         camera_c2w=camera_c2w,
+                        image_size = opts.crop_size,
                     )
-                    if failed:
-                        logger.info("Refinement failed, skipping.")
-                        continue
 
                     # Update final pose with the refined pose     
                     final_poses[0]["R_m2c"] = optimized_pose.R
@@ -807,7 +808,7 @@ def infer(opts: InferOpts) -> None:
                             base_image=vis_base_image,
                             object_repre=repre_np,
                             object_lid=object_lid,
-                            object_pose_m2w=pose_m2w,
+                            object_pose_m2w=pose_m2w, # pose_m2w,
                             object_pose_m2w_gt=object_pose_m2w_gt,
                             feature_map_chw=feature_map_chw,
                             feature_map_chw_proj=feature_map_chw_proj,
