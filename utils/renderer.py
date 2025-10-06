@@ -114,7 +114,7 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         else:
             trimesh_model = self.object_meshes[obj_id]
 
-        mesh = pyrender.Mesh.from_trimesh(trimesh_model)
+        mesh = pyrender.Mesh.from_trimesh(trimesh_model, smooth=False)
 
         # Create a scene and add the model to the scene in the canonical pose.
         ambient_light = np.array([0.02, 0.02, 0.02, 1.0])
