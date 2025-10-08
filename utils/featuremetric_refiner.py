@@ -188,7 +188,7 @@ def refine_multiview(
 
     # Check if the optimization failed
     if failed:
-        raise ValueError("Refinement failed")
+        return None, failed, None
     
 
     # Convert the optimized pose back to ObjectPose
