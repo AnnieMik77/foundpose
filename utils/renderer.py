@@ -65,6 +65,7 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         # Load the object model.
         object_model_path = self.model_path.format(obj_id=obj_id)
         trimesh_model = trimesh.load(object_model_path)
+        trimesh_model.apply_translation(-trimesh_model.center_mass)
         trimesh_model.vertices = trimesh_model.vertices/1000.0
 
         # Color the model.
@@ -102,6 +103,7 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         if obj_id not in self.object_meshes:
             
             trimesh_model = trimesh.load(model_path)
+            trimesh_model.apply_translation(-trimesh_model.center_mass)
             trimesh_model.vertices = trimesh_model.vertices/1000.0
             # Color the model.
             if mesh_color:
@@ -239,6 +241,16 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         # Convert translation from mm to m, as expected by pyrender.
         trans_c2w[:3, 3] *= 0.001
 
+        # Calculate distance from camera to object (assuming object is at origin)
+        camera_position = trans_c2w[:3, 3]
+        object_distance = np.linalg.norm(camera_position)
+        
+        # Adjust light intensity based on distance (inverse square law with some scaling)
+        base_intensity = 6  # Base intensity at 1 meter
+        # Scale intensity with distance squared, but add a minimum to avoid too dim lighting
+        intensity = base_intensity * (object_distance ** 2)
+        # print(f"Object distance: {object_distance:.2f} m, Light intensity: {intensity:.2f}")
+        
         # Camera for rendering.
         camera = pyrender.IntrinsicsCamera(
             fx=camera_model_c2w.f[0],
@@ -252,10 +264,11 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         # Create a camera node.
         camera_node = pyrender.Node(camera=camera, matrix=trans_c2w)
         scene_in_w.add_node(camera_node)
-        # Create light. 
+        
+        # Create light with distance-adjusted intensity
         light = pyrender.SpotLight(
             color=np.ones(3),
-            intensity=2.4,
+            intensity=intensity,  # Adjusted intensity
             innerConeAngle=np.pi / 16.0,
             outerConeAngle=np.pi / 6.0,
         )

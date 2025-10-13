@@ -31,7 +31,7 @@ def load_detections_in_bop_format(path: str):
         detections[key].append(
             {
                 "bbox": pred["bbox"],
-                "segmentation": pred["segmentation"],
+                # "segmentation": pred["segmentation"],
                 "score": pred["score"],
                 "time": pred["time"],
             }

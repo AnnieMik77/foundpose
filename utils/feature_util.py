@@ -114,10 +114,10 @@ def sample_feature_map_at_points(
     # Normalize the 2D coordinates to [-1, 1].
     uv = torch.div(2.0, torch.as_tensor(image_size)).to(points.device) * points - 1.0
 
-    # Convert the 2D coordinates to shape (1, N, 1, 2).
+    # Convert the 2D coordinates to shape (B=1, N, 1, 2).
     query_coords = uv.unsqueeze(0).unsqueeze(2)
 
-    # Feature vectors of shape [1, C, N, 1].
+    # Feature vectors of shape [B=1, C, N, 1].
     features = torch.nn.functional.grid_sample(
         feature_map_chw.unsqueeze(0),
         query_coords,
@@ -221,10 +221,10 @@ def get_visual_features_registered_in_3d(
     debug: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
-    device = image_chw.device
+    # TODO: batch this. Currently only works for a single image.
+    # There will need to be a "valid" mask to pad ragged arrays.
 
-    timer = misc.Timer(enabled=debug)
-    timer.start()
+    device = image_chw.device
 
     # Generate grid points at which to sample feature vectors.
     grid_points = generate_grid_points(
@@ -258,13 +258,74 @@ def get_visual_features_registered_in_3d(
     )
     vertex_ids = torch.arange(vertices_in_model.shape[0], dtype=torch.int32)
 
-    timer.elapsed("Time for preparation")
-
     # Extract feature vectors.
-    timer.start()
     image_bchw = image_chw.unsqueeze(0)
 
+    # Extract feature map at the current image scale.
+    extractor_output = extractor(image_bchw)
+    feature_map_chw = extractor_output["feature_maps"][0]
+    feature_map_chw = feature_map_chw.to(device)
+
+    # Extract feature vectors at query points.
+    feat_vectors = sample_feature_map_at_points(
+        feature_map_chw=feature_map_chw,
+        points=query_points,
+        image_size=(image_chw.shape[-1], image_chw.shape[-2]),
+    ).detach()
+
+    # Reshape the feature vectors to hw*c
+    feature_map_chw = feature_map_chw.detach()
+    feature_map_hwc = feature_map_chw.permute(1, 2, 0).reshape(
+        feature_map_chw.shape[1] * feature_map_chw.shape[2],
+        feature_map_chw.shape[0]
+    )
+
+    return (
+        feature_map_hwc,
+        feat_vectors,
+        query_points,
+        vertex_ids,
+        vertices_in_model,
+    )
+
+
+def get_masked_features(
+    image_chw: torch.Tensor,
+    object_mask: torch.Tensor,
+    extractor: torch.nn.Module,
+    grid_cell_size: float,
+    debug: bool = False,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+
+    device = image_chw.device
+
+    timer = misc.Timer(enabled=debug)
     timer.start()
+
+    # Generate grid points at which to sample feature vectors.
+    grid_points = generate_grid_points(
+        grid_size=(image_chw.shape[2], image_chw.shape[1]),
+        cell_size=grid_cell_size,
+    ).to(device)
+
+    # Erode the mask a bit to ignore pixels at the contour where
+    # depth values tend to be noisy.
+    kernel = torch.ones(5, 5).to(device)
+    object_mask_eroded = (
+        kornia.morphology.erosion(
+            object_mask.reshape(1, 1, *object_mask.shape).to(torch.float32), kernel
+        )
+        .squeeze([0, 1])
+        .to(object_mask.dtype)
+    )
+
+    # Keep only grid points inside the object mask.
+    query_points = filter_points_by_mask(grid_points, object_mask_eroded)
+    timer.elapsed("Time for preparation")
+
+    timer.start()
+    # Extract feature vectors.
+    image_bchw = image_chw.unsqueeze(0)
 
     # Extract feature map at the current image scale.
     extractor_output = extractor(image_bchw)
@@ -281,19 +342,76 @@ def get_visual_features_registered_in_3d(
         image_size=(image_chw.shape[-1], image_chw.shape[-2]),
     ).detach()
 
-    # Reshape the feature vectors to hw*c
-    feature_map_chw = feature_map_chw.detach()
-    feature_map_hwc = feature_map_chw.permute(1, 2, 0).reshape(
-        feature_map_chw.shape[1] * feature_map_chw.shape[2],
-        feature_map_chw.shape[0]
-    )
+    timer.elapsed(f"Time for feature sampling.")
+    return feat_vectors
+
+
+def get_masked_features_batched(
+    images_bchw: torch.Tensor,
+    object_masks: torch.Tensor,
+    extractor: torch.nn.Module,
+    grid_cell_size: float,
+    debug: bool = False,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+
+    device = images_bchw.device
+
+    timer = misc.Timer(enabled=debug)
+    timer.start()
+
+    # Generate grid points at which to sample feature vectors.
+    grid_points = generate_grid_points(
+        grid_size=(images_bchw.shape[-1], images_bchw.shape[-2]),
+        cell_size=grid_cell_size,
+    ).to(device)
+
+
+    batch_query_points = []
+    for i in range(images_bchw.shape[0]):
+        # image_chw = images_bchw[i]
+        object_mask = object_masks[i]
+
+        # Erode the mask a bit to ignore pixels at the contour where
+        # depth values tend to be noisy.
+        kernel = torch.ones(5, 5).to(device)
+        object_mask_eroded = (
+            kornia.morphology.erosion(
+                object_mask.reshape(1, 1, *object_mask.shape).to(torch.float32), kernel
+            )
+            .squeeze([0, 1])
+            .to(object_mask.dtype)
+        )
+
+        # Keep only grid points inside the object mask.
+        query_points = filter_points_by_mask(grid_points, object_mask_eroded)
+        batch_query_points.append(query_points)
+    
+    
+    timer.elapsed("Time for preparation")
+
+    timer.start()
+
+    # Extract feature map at the current image scale.
+    extractor_output = extractor(images_bchw)
+    feature_maps_bchw = extractor_output["feature_maps"]
+    feature_maps_bchw = feature_maps_bchw.to(device)
+
+    timer.elapsed(f"Time for feature extraction")
+    timer.start()
+
+    batch_feat_vectors = []
+    for i in range(images_bchw.shape[0]):
+        feature_map_chw = feature_maps_bchw[i]
+        query_points = batch_query_points[i]
+
+        # Extract feature vectors at query points.
+        feat_vectors = sample_feature_map_at_points(
+            feature_map_chw=feature_map_chw,
+            points=query_points,
+            image_size=(images_bchw.shape[-1], images_bchw.shape[-2]),
+        ).detach()
+
+        batch_feat_vectors.append(feat_vectors)
 
     timer.elapsed(f"Time for feature sampling.")
-
-    return (
-        feature_map_hwc,
-        feat_vectors,
-        query_points,
-        vertex_ids,
-        vertices_in_model,
-    )
+    return batch_feat_vectors

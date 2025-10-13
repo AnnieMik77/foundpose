@@ -144,6 +144,95 @@ def save_object_repre(
 
     torch.save(object_dict, repre_path)
 
+def save_simple_object_repre(
+    repre: FeatureBasedObjectRepre,
+    repre_dir: str,
+    ) -> None:
+
+    # Save the object into torch data.
+
+    object_dict = {}
+
+    for key, value in repre.__dict__.items():
+        if value is not None and torch.is_tensor(value):
+            object_dict[key] = value
+
+    # Save camera metadata.
+    object_dict["template_cameras_cam_from_model"] = []
+
+    object_dict["feat_opts"] = repre.feat_opts._asdict()
+    object_dict["template_desc_opts"] = repre.template_desc_opts._asdict() if repre.template_desc_opts is not None else None
+
+    object_dict["feat_raw_projectors"] = []
+    for projector in repre.feat_raw_projectors:
+        object_dict["feat_raw_projectors"].append(projector_util.projector_to_tensordict(projector))
+
+    object_dict["feat_vis_projectors"] = []
+    for projector in repre.feat_vis_projectors:
+        object_dict["feat_vis_projectors"].append(projector_util.projector_to_tensordict(projector))
+
+    # Save the dictionary of tensors to the file
+    repre_path = os.path.join(repre_dir, "repre.pth")
+    logger.info(f"Saving repre to: {repre_path}")
+
+    torch.save(object_dict, repre_path)
+
+def load_simple_object_repre(
+    repre_dir: str,
+    tensor_device: str = "cuda",
+    load_fields: Optional[List[str]] = None,
+) -> FeatureBasedObjectRepre:
+    """Loads a representation of the specified object."""
+
+    repre_path = os.path.join(repre_dir, "repre.pth")
+    logger.info(f"Loading repre from: {repre_path}")
+    object_dict = torch.load(repre_path)
+    logger.info("Repre loaded.")
+
+    repre_dict: Dict[str, Any] = {}
+
+    for key, value in object_dict.items():
+        if value is not None and (isinstance(value, torch.Tensor)):
+            repre_dict[key] = value
+
+    if object_dict["feat_opts"] is not None and (
+        load_fields is None or "feat_opts" in load_fields
+    ):
+        repre_dict["feat_opts"] = FeatureOpts(**dict(object_dict["feat_opts"]))
+
+    repre_dict["feat_raw_projectors"] = []
+    if load_fields is None or "feat_raw_projectors" in load_fields:
+        for projector in object_dict["feat_raw_projectors"]:
+            repre_dict["feat_raw_projectors"].append(
+                projector_util.projector_from_tensordict(projector)
+            )
+
+    repre_dict["feat_vis_projectors"] = []
+    if load_fields is None or "feat_vis_projectors" in load_fields:
+        for projector in object_dict["feat_vis_projectors"]:
+            repre_dict["feat_vis_projectors"].append(
+                projector_util.projector_from_tensordict(projector)
+            )
+
+    if load_fields is None or "template_desc_opts" in load_fields:
+        if object_dict["template_desc_opts"] is not None:
+            repre_dict["template_desc_opts"] = TemplateDescOpts(
+                **dict(object_dict["template_desc_opts"])
+            )
+
+    # Convert to the corresponding Python structure.
+    repre = FeatureBasedObjectRepre(**repre_dict)
+
+    # # Optionally move tensors to GPU.
+    # if tensor_device != "cpu":
+    #
+    #     def move_to_device(x: torch.Tensor) -> torch.Tensor:
+    #         return x.to(tensor_device)
+    #
+    #     repre = misc.map_fields(move_to_device, repre, only_type=torch.Tensor)
+
+    return repre
+
 def load_object_repre(
     repre_dir: str,
     tensor_device: str = "cuda",

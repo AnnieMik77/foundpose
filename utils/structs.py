@@ -15,6 +15,8 @@ from typing import (
     Union,
 )
 
+# set visible devices
+import os
 import numpy as np
 import torch
 

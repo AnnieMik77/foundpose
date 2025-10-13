@@ -7,13 +7,18 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import os
 
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import cv2
+# print cuda devices
+print("CUDA_VISIBLE_DEVICES: ", os.environ["CUDA_VISIBLE_DEVICES"])
 
 import numpy as np
 
 from bop_toolkit_lib import inout, dataset_params
 
 import bop_toolkit_lib.config as bop_config
+# set visible devices
 
 from utils import (
     misc as foundpose_misc,
@@ -26,11 +31,9 @@ from utils import (
 
 from utils.structs import AlignedBox2f, PinholePlaneCameraModel
 
-from utils.misc import warp_depth_image, warp_image
 from utils import geometry, renderer_builder
 from utils.renderer_base import RenderType
 
-import os
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
 class GenTemplatesOpts(NamedTuple):
@@ -68,6 +71,27 @@ class GenTemplatesOpts(NamedTuple):
     debug: bool = True
 
 
+def crop_and_resize_image(
+    image: np.ndarray,
+    crop_box: AlignedBox2f,
+    output_size: Tuple[int, int],
+    interpolation: int,
+) -> np.ndarray:
+    """Crops and resizes an image.
+
+    Args:
+        image: Image to be cropped and resized.
+        crop_box: Box for cropping.
+        output_size: Size of the output image (width, height).
+        interpolation: Interpolation method (e.g. cv2.INTER_LINEAR).
+    Returns:
+        Cropped and resized image.
+    """
+    x1, y1, x2, y2 = map(int, crop_box.array_ltrb())
+    cropped_image = image[y1:y2+1, x1:x2+1]
+    resized_image = cv2.resize(cropped_image, output_size, interpolation=interpolation)
+    return resized_image
+
 def synthesize_templates(opts: GenTemplatesOpts) -> None: 
 
     datasets_path = bop_config.datasets_path
@@ -94,7 +118,6 @@ def synthesize_templates(opts: GenTemplatesOpts) -> None:
         dataset_name=opts.object_dataset,
         split="test"
     )
-    from os.path import join
     # Get properties of the default camera for the specified dataset.
     bop_camera = dataset_params.get_camera_params(datasets_path=datasets_path, dataset_name=opts.object_dataset)
     # bop_camera = inout.load_cam_params(join(datasets_path, opts.object_dataset, "camera_3dlong.json"))
@@ -138,7 +161,7 @@ def synthesize_templates(opts: GenTemplatesOpts) -> None:
     print("camera model created")
 
     # Build a renderer.
-    render_types = [RenderType.COLOR, RenderType.DEPTH, RenderType.MASK]
+    render_types = [RenderType.COLOR, RenderType.MASK]
     renderer_type = renderer_builder.RendererType.PYRENDER_RASTERIZER
     renderer = renderer_builder.build(renderer_type=renderer_type)
 
@@ -310,92 +333,39 @@ def synthesize_templates(opts: GenTemplatesOpts) -> None:
                         make_square=True,
                     )
 
-                    # Construct a virtual camera focused on the box.
-                    crop_camera_model_c2w = foundpose_misc.construct_crop_camera(
-                        box=crop_box,
-                        camera_model_c2w=render_camera_model_c2w,
-                        viewport_size=(
-                            int(opts.crop_size[0] * opts.ssaa_factor),
-                            int(opts.crop_size[1] * opts.ssaa_factor),
-                        ),
-                        viewport_rel_pad=opts.crop_rel_pad,
+                    # Manually increase the size of the crop box around the object.
+                    box_width = crop_box.width
+                    box_height = crop_box.height
+                    pad_x = opts.crop_rel_pad * box_width
+                    pad_y = opts.crop_rel_pad * box_height
+                    
+                    crop_box_padded = AlignedBox2f(
+                        left= max(0,crop_box.left - pad_x),
+                        top= max(0,crop_box.top - pad_y),
+                        right= min(render_camera_model_c2w.width - 1, crop_box.right + pad_x),
+                        bottom= min(render_camera_model_c2w.height - 1, crop_box.bottom + pad_y),
                     )
-                    timer.elapsed("Time for virtual camera construction")
+                    crop_box = crop_box_padded
 
-                    timer.start()
-                    # Map the images to the virtual camera.
-                    for output_key in output.keys():
-                        if output_key in [RenderType.DEPTH]:
-                            output[output_key] = warp_depth_image(
-                                src_camera=render_camera_model_c2w,
-                                dst_camera=crop_camera_model_c2w,
-                                src_depth_image=output[output_key],
-                            )
-                        elif output_key in [RenderType.COLOR]:
-                            interpolation = (
-                                cv2.INTER_AREA
-                                if crop_box.width >= crop_camera_model_c2w.width
-                                else cv2.INTER_LINEAR
-                            )
-                            output[output_key] = warp_image(
-                                src_camera=render_camera_model_c2w,
-                                dst_camera=crop_camera_model_c2w,
-                                src_image=output[output_key],
-                                interpolation=interpolation,
-                            )
-                        else:
-                            output[output_key] = warp_image(
-                                src_camera=render_camera_model_c2w,
-                                dst_camera=crop_camera_model_c2w,
-                                src_image=output[output_key],
-                                interpolation=cv2.INTER_NEAREST,
-                            )
-                    timer.elapsed("Time for image warping")
-                    timer.start()
-
-                    # The virtual camera is becoming the main camera.
-                    camera_model_c2w = crop_camera_model_c2w.copy()
-                    scale_factor = opts.crop_size[0] / float(
-                        crop_camera_model_c2w.width
-                    )
-                    camera_model_c2w.width = opts.crop_size[0]
-                    camera_model_c2w.height = opts.crop_size[1]
-                    camera_model_c2w.c = (
-                        camera_model_c2w.c[0] * scale_factor,
-                        camera_model_c2w.c[1] * scale_factor,
-                    )
-                    camera_model_c2w.f = (
-                        camera_model_c2w.f[0] * scale_factor,
-                        camera_model_c2w.f[1] * scale_factor,
-                    )
-                    timer.elapsed("Time for virtual camera scaling")
-
-                # In case we are not cropping.
-                else:
-                    camera_model_c2w = PinholePlaneCameraModel(
-                        width=camera_model.width,
-                        height=camera_model.height,
-                        f=camera_model.f,
-                        c=camera_model.c,
-                        T_world_from_eye=trans_c2w,
-                    )
-                timer.start()
-
-                # Downsample the renderings to the target size in case of SSAA.
-                if opts.ssaa_factor != 1.0:
-                    target_size = (camera_model_c2w.width, camera_model_c2w.height)
                     for output_key in output.keys():
                         if output_key in [RenderType.COLOR]:
-                            interpolation = cv2.INTER_AREA
-                        else:
-                            interpolation = cv2.INTER_NEAREST
-
-                        output[output_key] = misc.resize_image(
-                            image=output[output_key],
-                            size=target_size,
-                            interpolation=interpolation,
-                        )
-
+                            # Crop and resize the color image.
+                            output[output_key] = crop_and_resize_image(
+                                image=output[output_key],
+                                crop_box=crop_box,
+                                output_size=opts.crop_size,
+                                interpolation=cv2.INTER_LINEAR
+                            )
+                        elif output_key in [RenderType.MASK]:
+                            # Crop and resize the binary mask.
+                            output[output_key] = crop_and_resize_image(
+                                image=output[output_key],
+                                crop_box=crop_box,
+                                output_size=opts.crop_size,
+                                interpolation=cv2.INTER_NEAREST
+                            )
+                            
+    
                 # Record the template in the template list.
                 template_list.append(
                     {
@@ -403,64 +373,15 @@ def synthesize_templates(opts: GenTemplatesOpts) -> None:
                     }
                 )
 
-                # Model and world coordinate frames are aligned.
-                trans_m2w = structs.RigidTransform(R=np.eye(3), t=np.zeros((3, 1)))
-
-                # The object is fully visible.
-                visibility = 1.0
-
-                # Recalculate the object bounding box (it changed if we constructed the virtual camera).
-                ys, xs = output[RenderType.MASK].nonzero()
-                box = np.array(foundpose_misc.calc_2d_box(xs, ys))
-                object_box = AlignedBox2f(
-                    left=box[0],
-                    top=box[1],
-                    right=box[2],
-                    bottom=box[3],
-                )
-
-                rgb_image = np.asarray(255.0 * output[RenderType.COLOR], np.uint8)
-                depth_image = output[RenderType.DEPTH]
-
-                # Object annotation.
-                # object_anno = structs.ObjectAnnotation(
-                #     dataset=opts.object_dataset,
-                #     lid=object_lid,
-                #     pose=trans_m2w,
-                #     boxes_amodal=np.array([object_box.array_ltrb()]),
-                #     masks_modal=np.array([output[RenderType.MASK]], dtype=np.uint8),
-                #     visibilities=np.array([visibility]),
-                # )
-
-                # Create a FrameSequence and write it to the Torch dataset.
-                # data: Dict[str, Any] = dataset_util.pack_frame_sequence(
-                #     sequence=structs.FrameSequence(
-                #         num_frames=1,
-                #         num_views=1,
-                #         images=np.array([[rgb_image]]),
-                #         depth_images=np.array([[depth_image]]),
-                #         cameras=[[camera_model_c2w]],
-                #         frames_anno=frames_anno,
-                #         objects_anno=[[object_anno]],
-                #     ),
-                # )
-
-
-                timer.elapsed("Time for template generation")
-
                 # Save template rgb, depth and mask.
                 timer.start()
+                rgb_image = np.asarray(255.0 * output[RenderType.COLOR], np.uint8)
+
                 rgb_path = os.path.join(
                     templates_rgb_dir, f"template_{template_counter:04d}.png"
                 )
                 logger.info(f"Saving template RGB {template_counter} to: {rgb_path}")
                 inout.save_im(rgb_path, rgb_image)
-
-                depth_path = os.path.join(
-                    templates_depth_dir, f"template_{template_counter:04d}.png"
-                )
-                logger.info(f"Saving template depth map {template_counter} to: {depth_path}")
-                inout.save_depth(depth_path, depth_image)
 
                 # Save template mask.
                 mask_path = os.path.join(
@@ -473,12 +394,7 @@ def synthesize_templates(opts: GenTemplatesOpts) -> None:
                     "dataset": opts.object_dataset,
                     "lid": object_lid,
                     "template_id": template_counter,
-                    "pose": trans_m2w,
-                    "boxes_amodal": np.array([object_box.array_ltrb()]).tolist(),
-                    "visibilities": np.array([visibility]).tolist(),
-                    "cameras": camera_model_c2w.to_json(),
                     "rgb_image_path": rgb_path,
-                    "depth_map_path": depth_path,
                     "binary_mask_path": mask_path,
                 }
                 timer.elapsed("Time for template saving")
