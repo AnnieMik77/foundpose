@@ -27,9 +27,9 @@ class DatasetOpts(NamedTuple):
     num_workers: The number of workers.
     """
 
-    crop_image_center: bool = True # False
+    crop_image_center: bool = False
     center_crop_size: Tuple[int, int] = (630, 476)  # For DINOv2 with 14x14 patches.
-    add_depth: bool = True
+    add_depth: bool = False
     convert_rgb_to_mono: bool = False
 
 
@@ -37,8 +37,8 @@ def prepare_sample(
     sample_info: Mapping[str, Any],
     split_props: Mapping[str, Any],
     chunk_cameras: Mapping[int, Mapping[int, PinholePlaneCameraModel]],
-    chunk_gts: Mapping[int, Mapping[int, Sequence[structs.ObjectAnnotation]]],
-    chunk_gts_info: Mapping[int, Mapping[int, Sequence[Mapping[str, Any]]]],
+    # chunk_gts: Mapping[int, Mapping[int, Sequence[structs.ObjectAnnotation]]],
+    # chunk_gts_info: Mapping[int, Mapping[int, Sequence[Mapping[str, Any]]]],
     # opts: DatasetOpts,
 ) -> Dict[str, Any]:
     """Produces a packed FrameSequence with a single image and its annotations.
@@ -77,17 +77,21 @@ def prepare_sample(
         camera = crop_model
 
     # Load the image.
-    if "gray" in split_props["im_modalities"]:
-        # ITODD includes grayscale instead of RGB images.
-        image_path = split_props["gray_tpath"].format(scene_id=chunk_id, im_id=im_id)
+    if type(split_props["im_modalities"]) is dict:
+        eval_sensor = split_props["eval_sensor"]
+        eval_modality = split_props["eval_modality"]
+        image_path = split_props[f"{eval_modality}_{eval_sensor}_tpath"].format(scene_id=chunk_id, im_id=im_id)
     else:
-        image_path = split_props["rgb_tpath"].format(scene_id=chunk_id, im_id=im_id)
+        eval_modality = 'rgb'
+        image_path = split_props[f"{eval_modality}_tpath"].format(scene_id=chunk_id, im_id=im_id)
 
     image = inout.load_im(image_path)
     if image.ndim == 3 and opts.convert_rgb_to_mono:
         image = np.expand_dims(misc.rgb_to_mono_image(image), -1)
     elif image.ndim == 2:
         image = np.expand_dims(image, -1)
+        image = np.repeat(image, 3, axis=-1)
+        image = (image >> 4).astype(np.uint8)
 
     # Load the depth image.
     depth_image = None
@@ -102,62 +106,62 @@ def prepare_sample(
             depth_image = misc.crop_image(depth_image, center_crop_box)
 
     # Object annotations.
-    objects_anno = None
-    if len(chunk_gts) and len(chunk_gts_info) and len(chunk_gts[chunk_id][im_id]):
-        objects_anno = []
-        for gt_id, gt in enumerate(chunk_gts[chunk_id][im_id]):
-            gt_info = chunk_gts_info[chunk_id][im_id][gt_id]
+    # objects_anno = None
+    # if len(chunk_gts) and len(chunk_gts_info) and len(chunk_gts[chunk_id][im_id]):
+    #     objects_anno = []
+    #     for gt_id, gt in enumerate(chunk_gts[chunk_id][im_id]):
+    #         gt_info = chunk_gts_info[chunk_id][im_id][gt_id]
 
-            # Load and encode the object mask.
-            mask_modal_path = split_props["mask_visib_tpath"].format(
-                scene_id=chunk_id, im_id=im_id, gt_id=gt_id
-            )
-            mask_modal = inout.load_im(mask_modal_path) / 255.0
+    #         # Load and encode the object mask.
+    #         mask_modal_path = split_props["mask_visib_tpath"].format(
+    #             scene_id=chunk_id, im_id=im_id, gt_id=gt_id
+    #         )
+    #         mask_modal = inout.load_im(mask_modal_path) / 255.0
 
-            # 2D (amodal) bounding box of the object.
-            box = gt_info["bbox_obj"]
-            box_amodal = [box[0], box[1], box[0] + box[2], box[1] + box[3]]
+    #         # 2D (amodal) bounding box of the object.
+    #         box = gt_info["bbox_obj"]
+    #         box_amodal = [box[0], box[1], box[0] + box[2], box[1] + box[3]]
 
-            # Visibility of the object.
-            visibility = gt_info["visib_fract"]
+    #         # Visibility of the object.
+    #         visibility = gt_info["visib_fract"]
 
-            # 6D object pose.
-            pose_m2w = None
-            if gt.pose is not None:
-                pose_m2c = gt.pose
-                trans_c2w = camera.T_world_from_eye
-                trans_m2w = np.matmul(trans_c2w, misc.get_rigid_matrix(pose_m2c))
-                pose_m2w = structs.ObjectPose(R=trans_m2w[:3, :3], t=trans_m2w[:3, 3:])
+    #         # 6D object pose.
+    #         pose_m2w = None
+    #         if gt.pose is not None:
+    #             pose_m2c = gt.pose
+    #             trans_c2w = camera.T_world_from_eye
+    #             trans_m2w = np.matmul(trans_c2w, misc.get_rigid_matrix(pose_m2c))
+    #             pose_m2w = structs.ObjectPose(R=trans_m2w[:3, :3], t=trans_m2w[:3, 3:])
 
-            # Update annotations in case of cropping.
-            if opts.crop_image_center and center_crop_box is not None:
-                mask_modal_orig = np.array(mask_modal)
-                mask_modal = misc.crop_image(mask_modal, center_crop_box)
+    #         # Update annotations in case of cropping.
+    #         if opts.crop_image_center and center_crop_box is not None:
+    #             mask_modal_orig = np.array(mask_modal)
+    #             mask_modal = misc.crop_image(mask_modal, center_crop_box)
 
-                box_amodal[0] -= center_crop_box.left
-                box_amodal[1] -= center_crop_box.top
-                box_amodal[2] -= center_crop_box.left
-                box_amodal[3] -= center_crop_box.top
+    #             box_amodal[0] -= center_crop_box.left
+    #             box_amodal[1] -= center_crop_box.top
+    #             box_amodal[2] -= center_crop_box.left
+    #             box_amodal[3] -= center_crop_box.top
 
-                visibility *= np.sum(mask_modal) / np.sum(mask_modal_orig)
+    #             visibility *= np.sum(mask_modal) / np.sum(mask_modal_orig)
 
-            objects_anno.append(
-                structs.ObjectAnnotation(
-                    dataset=split_props["name"],
-                    lid=gt.lid,
-                    pose=pose_m2w,
-                    boxes_amodal=np.array(box_amodal),
-                    masks_modal=np.array(mask_modal, dtype=np.uint8),
-                    visibilities=np.asarray(visibility),
-                )
-            )
+    #         objects_anno.append(
+    #             structs.ObjectAnnotation(
+    #                 dataset=split_props["name"],
+    #                 lid=gt.lid,
+    #                 pose=pose_m2w,
+    #                 boxes_amodal=np.array(box_amodal),
+    #                 masks_modal=np.array(mask_modal, dtype=np.uint8),
+    #                 visibilities=np.asarray(visibility),
+    #             )
+    #         )
 
     # Convert the frame sequence to a dictionary with encoded images.
     return structs.SceneAnnotation(
             image=np.array(image),
-            depth_image=np.array(depth_image),
+            depth_image=None,
             camera=camera,
-            objects_anno=objects_anno,
+            objects_anno=None,
         )
 
 

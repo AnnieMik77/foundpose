@@ -6,7 +6,10 @@
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import os
-
+# set up visible gpu
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
+import torch
 import cv2
 
 import numpy as np
@@ -30,8 +33,7 @@ from utils.misc import warp_depth_image, warp_image
 from utils import geometry, renderer_builder
 from utils.renderer_base import RenderType
 
-import os
-os.environ['PYOPENGL_PLATFORM'] = 'egl'
+
 
 class GenTemplatesOpts(NamedTuple):
     """Options that can be specified via the command line."""
@@ -96,8 +98,8 @@ def synthesize_templates(opts: GenTemplatesOpts) -> None:
     )
     from os.path import join
     # Get properties of the default camera for the specified dataset.
-    bop_camera = dataset_params.get_camera_params(datasets_path=datasets_path, dataset_name=opts.object_dataset)
-    # bop_camera = inout.load_cam_params(join(datasets_path, opts.object_dataset, "camera_3dlong.json"))
+    # bop_camera = dataset_params.get_camera_params(datasets_path=datasets_path, dataset_name=opts.object_dataset)
+    bop_camera = inout.load_cam_params(join(datasets_path, opts.object_dataset, "camera_3dlong.json"))
     logger.info(f"Bop camera details are read ")
 
     print("Object lids: ", object_lids)
@@ -295,8 +297,8 @@ def synthesize_templates(opts: GenTemplatesOpts) -> None:
                 if (
                     object_box.left == 0
                     or object_box.top == 0
-                    or object_box.right == render_camera_model_c2w.width - 1
-                    or object_box.bottom == render_camera_model_c2w.height - 1
+                    or object_box.right == render_camera_model_c2w.width
+                    or object_box.bottom == render_camera_model_c2w.height
                 ):
                     raise ValueError("The model does not fit the viewport.")
 

@@ -31,7 +31,7 @@ def load_detections_in_bop_format(path: str):
         detections[key].append(
             {
                 "bbox": pred["bbox"],
-                # "segmentation": pred["segmentation"],
+                "segmentation": pred["segmentation"],
                 "score": pred["score"],
                 "time": pred["time"],
             }
@@ -103,7 +103,7 @@ def get_instances_for_pose_estimation(
                 raise ValueError("Image is larger than mask.")
 
             # Apply the shift to mask and box.
-            mask_modal = mask_modal[shift_y:-shift_y, shift_x:-shift_x]
+            mask_modal = mask_modal[shift_y:min(-shift_y, -1), shift_x:min(-shift_x, -1)]
             box_amodal[0] -= shift_x
             box_amodal[1] -= shift_y
 

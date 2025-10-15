@@ -6,6 +6,7 @@ import datetime
 from copy import deepcopy
 
 import os
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 import gc
 import time
 
@@ -14,7 +15,6 @@ from typing import List, NamedTuple, Optional, Tuple
 import cv2
 
 import numpy as np
-os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 import torch
 
 from utils.misc import array_to_tensor, tensor_to_array, tensors_to_arrays
@@ -118,8 +118,8 @@ def infer(opts: InferOpts) -> None:
         path = os.path.join(
             datasets_path,
             "detections",
-            "cnos-fastsam",
-            f"cnos-fastsam_{opts.object_dataset}-test.json",
+            "nids",
+            f"nids_itoddmv-test_fibo_fine-gdino-base-dinov3b-cls-3dlong.json",
         )
         detections = infer_pose_util.load_detections_in_bop_format(path)
 
@@ -142,7 +142,7 @@ def infer(opts: InferOpts) -> None:
     bop_test_split_props = dataset_params.get_split_params(
         datasets_path=datasets_path,
         dataset_name=opts.object_dataset,
-        split="val"
+        split="test"
     )
 
     # Load BOP test targets
@@ -163,19 +163,22 @@ def infer(opts: InferOpts) -> None:
         test_target_count[key] = target["inst_count"]
         targets_per_obj.setdefault(target["obj_id"], list()).append(target)
 
-    scene_gts = {}
-    scene_gts_info = {}
+    # scene_gts = {}
+    # scene_gts_info = {}
     scene_cameras = {}
 
     eval_modality, eval_sensor = bop_test_split_props["eval_modality"], bop_test_split_props["eval_sensor"]
 
     for scene_id in scene_im_ids.keys():
-        scene_cameras[scene_id] = data_util.load_chunk_cameras(bop_test_split_props[f"scene_camera_{eval_modality}_{eval_sensor}_tpath"].format(scene_id=scene_id), bop_test_split_props["im_size"][eval_sensor])
-        scene_gts[scene_id] = data_util.load_chunk_gts(bop_test_split_props[f"scene_gt_{eval_modality}_{eval_sensor}_tpath"].format(scene_id=scene_id),opts.object_dataset)
-        scene_gts_info[scene_id] = json_util.load_json(
-            bop_test_split_props[f"scene_gt_info_{eval_modality}_{eval_sensor}_tpath"].format(scene_id=scene_id),
-            keys_to_int=True,
-        )
+        if eval_modality is not None and eval_sensor is not None:
+            scene_cameras[scene_id] = data_util.load_chunk_cameras(bop_test_split_props[f"scene_camera_{eval_modality}_{eval_sensor}_tpath"].format(scene_id=scene_id), bop_test_split_props["im_size"][eval_sensor])
+        else: 
+            scene_cameras[scene_id] = data_util.load_chunk_cameras(bop_test_split_props[f"scene_camera_tpath"].format(scene_id=scene_id), bop_test_split_props["im_size"])
+        # scene_gts[scene_id] = data_util.load_chunk_gts(bop_test_split_props[f"scene_gt_{eval_modality}_{eval_sensor}_tpath"].format(scene_id=scene_id),opts.object_dataset)
+        # scene_gts_info[scene_id] = json_util.load_json(
+        #     bop_test_split_props[f"scene_gt_info_{eval_modality}_{eval_sensor}_tpath"].format(scene_id=scene_id),
+        #     keys_to_int=True,
+        # )
 
     # Create a renderer.
     renderer_type = renderer_builder.RendererType.PYRENDER_RASTERIZER
@@ -288,8 +291,8 @@ def infer(opts: InferOpts) -> None:
                 item_info,
                 bop_test_split_props,
                 scene_cameras,
-                scene_gts,
-                scene_gts_info
+                # scene_gts,
+                # scene_gts_info
             )
 
             # Get object annotations.
@@ -670,14 +673,15 @@ def infer(opts: InferOpts) -> None:
                     
                     # Run the refinement
                     optimized_pose, failed = featuremetric_refiner.refine(
+                        initial_pose_m2c=initial_pose,
                         template_vertices_ref=template_vertices_ref,
                         template_masked_features_ref=template_masked_features_ref,
                         feature_map_chw_proj_ref=feature_map_chw_proj_ref,
-                        initial_pose=initial_pose,
                         camera_c2w=camera_c2w,
-                        image_size = opts.crop_size,
+                        num_iters=30,
                     )
-
+                    if failed:
+                        logger.info(f"Featuremetric refinement failed, keeping coarse pose")
                     # Update final pose with the refined pose     
                     final_poses[0]["R_m2c"] = optimized_pose.R
                     final_poses[0]["t_m2c"] = optimized_pose.t.reshape(3, 1)
@@ -785,7 +789,7 @@ def infer(opts: InferOpts) -> None:
                             obj_lid=object_lid,
                             object_pose_m2w=pose_m2w,
                             orig_camera_c2w=orig_camera_c2w,
-                            camera_c2w=orig_camera_c2w,
+                            camera_c2w=camera_c2w,
                             time_per_inst=times,
                             corresp=best_corresp_np,
                             inlier_radius=(opts.pnp_inlier_thresh),
@@ -848,7 +852,7 @@ def infer(opts: InferOpts) -> None:
                         inout.save_im(vis_path, vis_grid)
                         logger.info(f"Visualization saved to {vis_path}")
 
-                        if opts.debug:
+                        if opts.debug and object_pose_m2w_gt is not None:
                             pts_path = os.path.join(
                                 output_dir,
                                 f"{bop_chunk_id}_{bop_im_id}_{object_lid}_{inst_j}_{hypothesis_id}_vertice_error.ply",

@@ -33,9 +33,9 @@ def refine(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Convert initial pose to Pixloc format
-    initial_pose_m2c = misc.get_rigid_matrix(initial_pose_m2c)
-    initial_pose_m2c = torch.tensor(initial_pose_m2c, dtype=torch.float32)
-    initial_pose_m2c = Pose.from_4x4mat(initial_pose_m2c.unsqueeze(0)).to(device)
+    initial_pose_m2c_array = misc.get_rigid_matrix(initial_pose_m2c)
+    initial_pose_m2c_tensor = torch.tensor(initial_pose_m2c_array, dtype=torch.float32)
+    initial_pose_m2c_pose = Pose.from_4x4mat(initial_pose_m2c_tensor.unsqueeze(0)).to(device)
 
     # Convert camera to Pixloc format
     camera_intrinsic = torch.tensor([
@@ -65,16 +65,20 @@ def refine(
 
     # Optimize the pose
     optimizer = ClassicOptimizer(conf)
-    optimized_pose, failed = optimizer.run(
-        p3D = template_vertices_ref,
-        F_ref = template_masked_features_ref,
-        F_query = feature_map_chw_proj_ref,
-        T_init = initial_pose_m2c, 
-        camera = camera)
+    try:
+        optimized_pose, failed = optimizer.run(
+            p3D = template_vertices_ref,
+            F_ref = template_masked_features_ref,
+            F_query = feature_map_chw_proj_ref,
+            T_init = initial_pose_m2c_pose, 
+            camera = camera)
+    except Exception as e:
+        print("Optimization failed with exception:", e)
+        return initial_pose_m2c, True
     
     # Check if the optimization failed
     if failed:
-        raise ValueError("Refinement failed")
+        return initial_pose_m2c, failed
     
     # Convert the optimized pose back to ObjectPose
     optimized_pose = ObjectPose(
