@@ -6,7 +6,7 @@ import datetime
 from copy import deepcopy
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 import gc
 import time
 
@@ -57,6 +57,7 @@ class InferOpts(NamedTuple):
     """Options that can be specified via the command line."""
 
     version: str
+    sensor: str
     repre_version: str
     object_dataset: str
     object_lids: Optional[List[int]] = None
@@ -66,8 +67,6 @@ class InferOpts(NamedTuple):
     crop: bool = True
     crop_rel_pad: float = 0.2
     crop_size: Tuple[int, int] = (420, 420)
-
-    sensor: str = None
 
     # Object instance options.
     use_detections: bool = True
@@ -121,7 +120,7 @@ def infer(opts: InferOpts) -> None:
             datasets_path,
             "detections",
             "nids",
-            f"nids_itoddmv-test_fibo_fine-gdino-base-dinov3b-cls-{opts.sensor}.json",
+            f"nids_housecat6d-test_fibo_fine-gdino-base-dinov3b-cls.json",
         )
         detections = infer_pose_util.load_detections_in_bop_format(path)
 
@@ -147,31 +146,29 @@ def infer(opts: InferOpts) -> None:
         split="test"
     )
 
-    # Load BOP test targets
-    if opts.eval_full_dataset:
-        test_targets_path = os.path.join(bop_test_split_props["base_path"], "test_targets_bop19.json")
-    else:
-        test_targets_path = os.path.join(bop_test_split_props["base_path"], "test_targets_bop19_tenth.json")
-    targets = inout.load_json(test_targets_path)
-
     scene_ids = dataset_params.get_present_scene_ids(bop_test_split_props)
-
+    
+    # here we will create targets based on detections, so like all objects in the detections
     scene_im_ids = {}
     test_target_count = {}
     targets_per_obj = {}
-    for target in targets:
-        scene_im_ids.setdefault(target["scene_id"], set()).add(target["im_id"])
-        key = (target["scene_id"], target["im_id"], target["obj_id"])
-        test_target_count[key] = target["inst_count"]
-        targets_per_obj.setdefault(target["obj_id"], list()).append(target)
+    for key, targets in detections.items():
+        test_target_count[key] = len(targets)
+        target = {}
+        target["scene_id"] = key[0]
+        target["im_id"] = key[1]
+        targets_per_obj.setdefault(key[2], list()).append(target)
 
     # scene_gts = {}
     # scene_gts_info = {}
     scene_cameras = {}
 
+    # bop_test_split_props["eval_modality"] = "gray"
+    # bop_test_split_props["eval_sensor"] = opts.sensor
     eval_modality, eval_sensor = bop_test_split_props["eval_modality"], bop_test_split_props["eval_sensor"]
 
-    for scene_id in scene_im_ids.keys():
+
+    for scene_id in scene_ids:
         if eval_modality is not None and eval_sensor is not None:
             scene_cameras[scene_id] = data_util.load_chunk_cameras(bop_test_split_props[f"scene_camera_{eval_modality}_{eval_sensor}_tpath"].format(scene_id=scene_id), bop_test_split_props["im_size"][eval_sensor])
         else: 
@@ -194,7 +191,7 @@ def infer(opts: InferOpts) -> None:
         timer.start()
 
         # The output folder is named with slugified dataset path.
-        version = opts.version
+        version = opts.version + "_" + opts.sensor
         if version == "":
             version = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         signature = misc.slugify(opts.object_dataset) + "_{}".format(version)
@@ -518,11 +515,16 @@ def infer(opts: InferOpts) -> None:
                     query_features.shape[1] != repre.feat_vectors.shape[1]
                     and len(repre.feat_raw_projectors) != 0
                 ):
-                    query_features_proj = projector_util.project_features(
-                        feat_vectors=query_features,
-                        projectors=repre.feat_raw_projectors,
-                    ).contiguous()
-
+                    try:
+                        query_features_proj = projector_util.project_features(
+                            feat_vectors=query_features,
+                            projectors=repre.feat_raw_projectors,
+                        ).contiguous()
+                    except Exception as e:
+                        logger.warning(
+                            f"Projecting features failed with error {e}, using raw features."
+                        )
+                        continue
                     _c, _h, _w = feature_map_chw.shape
                     feature_map_chw_proj = (
                         projector_util.project_features(

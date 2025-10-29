@@ -91,7 +91,8 @@ def prepare_sample(
     elif image.ndim == 2:
         image = np.expand_dims(image, -1)
         image = np.repeat(image, 3, axis=-1)
-        image = (image >> 4).astype(np.uint8)
+        if image.dtype == np.uint16:
+            image = (image >> 4).astype(np.uint8)
 
     # Load the depth image.
     depth_image = None
@@ -106,7 +107,7 @@ def prepare_sample(
             depth_image = misc.crop_image(depth_image, center_crop_box)
 
     # Object annotations.
-    # objects_anno = None
+    objects_anno = None
     # if len(chunk_gts) and len(chunk_gts_info) and len(chunk_gts[chunk_id][im_id]):
     #     objects_anno = []
     #     for gt_id, gt in enumerate(chunk_gts[chunk_id][im_id]):
@@ -161,7 +162,7 @@ def prepare_sample(
             image=np.array(image),
             depth_image=None,
             camera=camera,
-            objects_anno=None,
+            objects_anno=objects_anno,
         )
 
 

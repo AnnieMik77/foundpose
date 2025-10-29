@@ -3,6 +3,7 @@
 """Generates a feature-based object representation."""
 
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import logging
 
 from typing import Any, Dict, List, NamedTuple, Optional
@@ -188,7 +189,7 @@ def generate_raw_repre(
         if store_full_features:
             feat_vectors_full_list.append(feat_vectors_full)
         else:
-            feat_vectors_full_list.append([])
+            feat_vectors_full_list.append(torch.empty((0, feat_vectors_full.shape[1]), device=device))
         feat_vectors_list.append(feat_vectors)
         query_pts_list.append(query_pts)
         feat_to_vertex_ids_list.append(feat_to_vertex_ids)

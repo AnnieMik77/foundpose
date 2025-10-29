@@ -7,7 +7,9 @@ import numpy as np
 import trimesh
 import pyrender
 from utils.misc import tensor_to_array
+from utils import misc
 from utils import renderer_base, structs
+from pathlib import Path
 
 from PIL import Image
 import os.path as osp
@@ -52,6 +54,7 @@ class PyrenderRasterizer(renderer_base.RendererBase):
     def get_object_model(self,
         obj_id: int,
         mesh_color: Optional[structs.Color] = None,
+        center_model: bool = False,
         **kwargs: Any,
         ) -> trimesh.Trimesh:
         """Gets the object model.
@@ -65,7 +68,8 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         # Load the object model.
         object_model_path = self.model_path.format(obj_id=obj_id)
         trimesh_model = trimesh.load(object_model_path)
-        trimesh_model.apply_translation(-trimesh_model.center_mass)
+        if center_model:
+            trimesh_model.apply_translation(-trimesh_model.center_mass)
         trimesh_model.vertices = trimesh_model.vertices/1000.0
 
         # Color the model.
@@ -86,6 +90,7 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         obj_id: int,
         model_path: str,
         mesh_color: Optional[structs.Color] = None,
+        center_model: bool = False,
         **kwargs: Any,
     ) -> None:
         """Adds an object model to the renderer.
@@ -103,7 +108,8 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         if obj_id not in self.object_meshes:
             
             trimesh_model = trimesh.load(model_path)
-            trimesh_model.apply_translation(-trimesh_model.center_mass)
+            if center_model:
+                trimesh_model.apply_translation(-trimesh_model.center_mass)
             trimesh_model.vertices = trimesh_model.vertices/1000.0
             # Color the model.
             if mesh_color:
@@ -124,6 +130,49 @@ class PyrenderRasterizer(renderer_base.RendererBase):
             bg_color=np.zeros(4), ambient_light=ambient_light
         )
         self.object_scenes[obj_id].add(mesh)
+
+    def render_object(
+        self,
+        obj_id: int,
+        pose_m2c: np.ndarray,
+        camera_intrinsics: structs.CameraModel,
+        render_types: Sequence[RenderType],
+        return_tensors: bool = False,
+        debug: bool = False,
+        **kwargs: Any,
+    ) -> Dict[RenderType, structs.ArrayData]:
+        """Renders an object model at a specific pose relative to camera.
+        
+        Args:
+            obj_id: The object ID.
+            pose_m2c: 4x4 transformation matrix from model frame to camera frame.
+            camera_intrinsics: Camera intrinsics (f, c, width, height).
+            render_types: Types of images to render.
+            return_tensors: Whether to return the renderings as tensors or arrays.
+            debug: Whether to save/print debug outputs.
+            
+        Returns:
+            A dictionary with the rendering output.
+        """
+        
+        # Create a camera model with the given pose
+        camera_model_c2w = structs.CameraModel(
+            f=camera_intrinsics.f,
+            c=camera_intrinsics.c,
+            width=camera_intrinsics.width,
+            height=camera_intrinsics.height,
+            T_world_from_eye=np.linalg.inv(pose_m2c)
+        )
+        
+        # Use the existing render_object_model method which handles per-object scenes
+        return self.render_object_model(
+            obj_id=obj_id,
+            camera_model_c2w=camera_model_c2w,
+            render_types=render_types,
+            return_tensors=return_tensors,
+            debug=debug,
+            **kwargs
+        )
 
     def render_object_model(
         self,

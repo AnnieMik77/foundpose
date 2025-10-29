@@ -33,6 +33,8 @@ from utils.misc import warp_depth_image, warp_image
 from utils import geometry, renderer_builder
 from utils.renderer_base import RenderType
 
+from pathlib import Path
+
 
 
 class GenTemplatesOpts(NamedTuple):
@@ -98,8 +100,8 @@ def synthesize_templates(opts: GenTemplatesOpts) -> None:
     )
     from os.path import join
     # Get properties of the default camera for the specified dataset.
-    # bop_camera = dataset_params.get_camera_params(datasets_path=datasets_path, dataset_name=opts.object_dataset)
-    bop_camera = inout.load_cam_params(join(datasets_path, opts.object_dataset, "camera_3dlong.json"))
+    bop_camera = dataset_params.get_camera_params(datasets_path=datasets_path, dataset_name=opts.object_dataset)
+    # bop_camera = inout.load_cam_params(join(datasets_path, opts.object_dataset, "camera_3dlong.json"))
     logger.info(f"Bop camera details are read ")
 
     print("Object lids: ", object_lids)

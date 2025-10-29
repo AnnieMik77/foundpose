@@ -112,9 +112,9 @@ def refine_multiview(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Convert initial pose to Pixloc format
-    initial_pose_m2w = misc.get_rigid_matrix(initial_pose_m2w)
-    initial_pose_m2w = torch.tensor(initial_pose_m2w, dtype=torch.float32)
-    initial_pose_m2w = Pose.from_4x4mat(initial_pose_m2w).to(device).to(torch.float32)
+    initial_pose_m2c_array = misc.get_rigid_matrix(initial_pose_m2w)
+    initial_pose_m2c_tensor = torch.tensor(initial_pose_m2c_array, dtype=torch.float32)
+    initial_pose_m2c_pose = Pose.from_4x4mat(initial_pose_m2c_tensor.unsqueeze(0)).to(device)
 
     # Convert all list of tensors to padded, for batch processing
     mask = []
@@ -180,19 +180,23 @@ def refine_multiview(
     optimizer.eval()
 
     # Run the optimizer
-    T_pose, failed, cost_seq = optimizer.run(
-        p3D=template_vertices_ref, 
-        F_ref=template_masked_features_ref,
-        F_query=feature_map_chw_proj_ref,
-       T_init_wo=initial_pose_m2w,
-        T_cw=camera_poses_w2c,
-        cameras=camera_objects,
-        mask=mask
-    )
+    try:
+        T_pose, failed, cost_seq = optimizer.run(
+            p3D=template_vertices_ref, 
+            F_ref=template_masked_features_ref,
+            F_query=feature_map_chw_proj_ref,
+            T_init_wo=initial_pose_m2c_pose,
+            T_cw=camera_poses_w2c,
+            cameras=camera_objects,
+            mask=mask
+        )
+    except Exception as e:
+        print("Optimization failed with exception:", e)
+        return initial_pose_m2w, True, None
 
     # Check if the optimization failed
     if failed:
-        return None, failed, None
+        return initial_pose_m2w, failed, None
     
 
     # Convert the optimized pose back to ObjectPose

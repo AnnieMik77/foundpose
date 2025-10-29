@@ -3,3 +3,4 @@
 logs/*
 scripts/backup
 scripts/help_scripts
+*.out
