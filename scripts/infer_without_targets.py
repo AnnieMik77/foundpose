@@ -6,7 +6,7 @@ import datetime
 from copy import deepcopy
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = "1"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import gc
 import time
 
@@ -119,11 +119,10 @@ def infer(opts: InferOpts) -> None:
         path = os.path.join(
             datasets_path,
             "detections",
-            "nids",
-            f"nids_housecat6d-test_fibo_fine-gdino-base-dinov3b-cls.json",
+            "ipt",
+            f"ipt_itoddmv-test_{opts.sensor}-sam2.json",
         )
         detections = infer_pose_util.load_detections_in_bop_format(path)
-
 
     # Prepare feature extractor.
     extractor = feature_util.make_feature_extractor(opts.extractor_name)
@@ -163,8 +162,8 @@ def infer(opts: InferOpts) -> None:
     # scene_gts_info = {}
     scene_cameras = {}
 
-    # bop_test_split_props["eval_modality"] = "gray"
-    # bop_test_split_props["eval_sensor"] = opts.sensor
+    bop_test_split_props["eval_modality"] = "gray"
+    bop_test_split_props["eval_sensor"] = opts.sensor
     eval_modality, eval_sensor = bop_test_split_props["eval_modality"], bop_test_split_props["eval_sensor"]
 
 

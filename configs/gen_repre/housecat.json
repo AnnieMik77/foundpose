@@ -1,8 +1,8 @@
 {
     "gen_repre_opts": {
-        "version": "v_normals_uncentered_foundpose_vitl_layer18",
-        "templates_version": "v_normals_uncentered",
-        "object_dataset": "itoddmv",
+        "version": "v_foundpose_vitl_layer18_textured",
+        "templates_version": "v1_textured",
+        "object_dataset": "housecat",
         "object_lids": [
             1,
             2,
@@ -28,10 +28,7 @@
             22,
             23,
             24,
-            25,
-            26,
-            27,
-            28
+            25
         ],
         "extractor_name": "dinov2_version=vitl14-reg_stride=14_facet=token_layer=18_logbin=0_norm=1",
         "grid_cell_size": 14.0,
