@@ -95,7 +95,8 @@ def refine_multiview(
         template_masked_features_ref: List[Tensor],
         feature_map_chw_proj_ref: List[Tensor],
         cameras: List[PinholePlaneCameraModel],
-        num_iters: int = 30
+        num_iters: int = 30,
+        loss_fn = "scaled_barron(-5, 0.5)",
       ) -> Tuple[Pose, Tensor]:
     """
     Refine the pose using the ClassicOptimizer. M is number of views, N is number of registered features per view.
@@ -108,7 +109,6 @@ def refine_multiview(
     Returns:
         Tuple[Pose, Tensor]: Optimized pose and failure flag.
     """
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Convert initial pose to Pixloc format
@@ -162,7 +162,6 @@ def refine_multiview(
     camera_objects = Camera(data=torch.stack(cam_intrinsics)).to(device)
     camera_poses_w2c = Pose.from_4x4mat(torch.stack(cam_poses))
 
-
     # Create an instance of ClassicOptimizer
     conf = {
         "num_iters": num_iters,
@@ -174,7 +173,7 @@ def refine_multiview(
             mode='linear',
             pad=4,
         ),
-        "loss_fn": "scaled_barron(-5, 0.5)"
+        "loss_fn": loss_fn,
     }
     optimizer = ClassicMultiviewOptimizer(conf)
     optimizer.eval()

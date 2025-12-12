@@ -9,7 +9,8 @@ import torch.nn.functional as F
 from utils import logging, misc, geometry
 from utils.structs import PinholePlaneCameraModel
 
-from utils import dinov2_utils,dinov3_utils
+from utils import dinov2_utils,dinov3_utils,feature_extractors
+from utils import radio_utils
 
 logger: logging.Logger = logging.get_logger()
 
@@ -20,6 +21,12 @@ def make_feature_extractor(model_name: str) -> torch.nn.Module:
         return dinov2_utils.DinoFeatureExtractor(model_name=model_name)
     elif model_name.startswith("dinov3_"):
         return dinov3_utils.DINOv3FeatureExtractor(model_name=model_name)
+    elif model_name.startswith("radiov2_"):
+        return radio_utils.RadioFeatureExtractor(model_name=model_name)
+    elif model_name.startswith("RGB"): # TODO
+        return feature_extractors.RGBFeatureExtractor(model_name=model_name)
+    elif model_name.startswith("sift"):
+        return feature_extractors.SIFTFeatureExtractor(model_name=model_name)
     else:
         raise NotImplementedError(model_name)
 

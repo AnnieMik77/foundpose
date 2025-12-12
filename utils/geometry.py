@@ -5,7 +5,6 @@ import numpy as np
 import torch
 from typing import Tuple, TypeVar
 import scipy
-from utils import geometry
 
 from scipy.spatial.transform import Rotation
 
@@ -133,8 +132,8 @@ def rotate_points(matrix: AnyTensor, points: AnyTensor) -> AnyTensor:
 
 def from_two_vectors(a_orig: np.ndarray, b_orig: np.ndarray) -> np.ndarray:
     # Convert the vectors to unit vectors.
-    a = geometry.normalized(a_orig)
-    b = geometry.normalized(b_orig)
+    a = normalized(a_orig)
+    b = normalized(b_orig)
     v = np.cross(a, b)
     s = np.linalg.norm(v)
     c = np.dot(a, b)
@@ -168,7 +167,7 @@ def rotation_matrix_numpy(angle: float, direction: np.ndarray) -> np.ndarray:
     """
     sina = math.sin(angle)
     cosa = math.cos(angle)
-    direction = geometry.normalized(direction[:3])
+    direction = normalized(direction[:3])
     R = np.array(
         ((cosa, 0.0, 0.0), (0.0, cosa, 0.0), (0.0, 0.0, cosa)), dtype=np.float64
     )
