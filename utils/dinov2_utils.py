@@ -97,6 +97,7 @@ class DinoFeatureExtractor(nn.Module):
         self.stride = self.model.patch_embed.proj.stride[0]
 
         self.model.eval()
+        self.model.requires_grad_(False)
 
         self._feats: List[torch.Tensor] = []
         self.hook_handlers: List[RemovableHandle] = []

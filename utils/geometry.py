@@ -224,5 +224,5 @@ def normalized(v: AnyTensor, axis: int = -1, eps: float = 5.43e-20) -> AnyTensor
         where squared single-precision floats will start to lose
         precision.
     """
-    d = np.maximum(eps, (v * v).sum(axis=axis, keepdims=True) ** 0.5)
+    d = np.maximum(eps, np.linalg.norm(v, axis=axis, keepdims=True))
     return v / d

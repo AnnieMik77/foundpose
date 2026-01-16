@@ -33,6 +33,8 @@
 
 This is the official implementation of our work **FoundPose** which proposes a novel model-based 6DoF pose estimation method for unseen objects, built on top of [DINOv2](https://github.com/facebookresearch/dinov2) features. In this repository, we provide the coarse pose estimation pipeline without the featuremetric refinement stage. 
 
+> **Note:** We added the featuremetric refinement stage..
+
 Our training-free method does not require the release of any weights. In this repository, we release the created object templates, representation and the inference outputs as a reference. 
 
 ## Table of Contents
@@ -56,7 +58,7 @@ Our training-free method does not require the release of any weights. In this re
 Download the code with the git submodules and navigate to the folder:
 
 ```bash
-git clone --recurse-submodules https://github.com/facebookresearch/foundpose
+git clone --branch pixloc_refiner --single-branch --recurse-submodules https://github.com/AnnieMik77/foundpose.git
 cd foundpose
 ```
 

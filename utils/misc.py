@@ -317,7 +317,7 @@ def get_rigid_matrix(trans: structs.RigidTransform) -> np.ndarray:
 
     matrix = np.eye(4)
     matrix[:3, :3] = trans.R
-    matrix[:3, 3:] = trans.t
+    matrix[:3, 3:] = trans.t.reshape((3, 1))
     return matrix
 
 
