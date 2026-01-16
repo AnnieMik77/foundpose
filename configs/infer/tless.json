@@ -1,6 +1,6 @@
 {
     "infer_opts": {
-        "version": "refinement_align",
+        "version": "featuremetric_refinement",
         "object_dataset": "tless",
         "repre_version": "v_foundpose_vitl_layer18",
         "crop_rel_pad": 0.2,
@@ -19,8 +19,6 @@
         "pnp_ransac_iter": 400,
         "pnp_inlier_thresh": 10.0,
         "final_pose_type": "refined",
-        "refiner_align_corners": true,
-        "eval_full_dataset": true,
         "num_preds_factor": 1,
         "vis_results": false
     }
