@@ -58,7 +58,7 @@ Our training-free method does not require the release of any weights. In this re
 Download the code with the git submodules and navigate to the folder:
 
 ```bash
-git clone --branch for_multiview --single-branch --recurse-submodules https://github.com/AnnieMik77/foundpose.git
+git clone --branch simple_templates --single-branch --recurse-submodules https://github.com/AnnieMik77/foundpose.git
 cd foundpose
 ```
 
@@ -86,9 +86,8 @@ Edit the ```env_vars.sh``` file as follows:
 
 export REPO_PATH=/path/to/foundpose/repository  # Replace with the path to the FoundPose repository.
 export BOP_PATH=/path/to/bop/datasets  # Replace with the path to BOP datasets (https://bop.felk.cvut.cz/datasets).
-export MULTIVIEW_PATH=/path/to/multiview/repository  # Replace with the path to the Featuremetric multiview repository.
 
-export PYTHONPATH=$MULTIVIEW_PATH:$REPO_PATH:$REPO_PATH/external/bop_toolkit:$REPO_PATH/external/dinov2:$REPO_PATH/external/pixloc
+export PYTHONPATH=$REPO_PATH:$REPO_PATH/external/bop_toolkit:$REPO_PATH/external/dinov2:$REPO_PATH/external/pixloc
 ```
 
 Activate the conda environment:

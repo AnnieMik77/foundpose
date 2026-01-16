@@ -9,10 +9,6 @@ import pyrender
 from utils.misc import tensor_to_array
 from utils import misc
 from utils import renderer_base, structs
-from pathlib import Path
-
-from PIL import Image
-import os.path as osp
 
 class RenderType(Enum):
     """The rendering type.
@@ -70,7 +66,7 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         trimesh_model = trimesh.load(object_model_path)
         if center_model:
             trimesh_model.apply_translation(-trimesh_model.center_mass)
-        trimesh_model.vertices = trimesh_model.vertices/1000.0 # pylone comment this, don't  divide
+        trimesh_model.vertices = trimesh_model.vertices/1000.0
 
         # Color the model.
         if mesh_color:
@@ -110,7 +106,7 @@ class PyrenderRasterizer(renderer_base.RendererBase):
             trimesh_model = trimesh.load(model_path)
             if center_model:
                 trimesh_model.apply_translation(-trimesh_model.center_mass)
-            trimesh_model.vertices = trimesh_model.vertices/1000.0 # pylone comment this, don't  divide
+            trimesh_model.vertices = trimesh_model.vertices/1000.0
             # Color the model.
             if mesh_color:
                 num_vertices = trimesh_model.vertices.shape[0]
@@ -228,7 +224,7 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         # Add meshes to the scene.
         for mesh_id, mesh in enumerate(meshes_in_w):
             # Scale the mesh from mm to m (expected by pyrender).
-            mesh.vertices /= 1000.0 # pylone comment this, don't  divide
+            mesh.vertices /= 1000.0
 
             # Color the mesh.
             if mesh_colors:
@@ -252,7 +248,7 @@ class PyrenderRasterizer(renderer_base.RendererBase):
 
         # Scale the meshes back to mm.
         for mesh in meshes_in_w:
-            mesh.vertices *= 1000.0 # pylone comment this, don't  multiply
+            mesh.vertices *= 1000.0
 
         return output
 
@@ -294,11 +290,10 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         camera_position = trans_c2w[:3, 3]
         object_distance = np.linalg.norm(camera_position)
         
-        # Adjust light intensity based on distance (inverse square law with some scaling)
-        base_intensity = 6  # Base intensity at 1 meter, pylone 500
-        # Scale intensity with distance squared, but add a minimum to avoid too dim lighting
+        # Adjust light intensity based on distance
+        base_intensity = 6  # Base intensity at 1 meter
+        # Scale intensity with distance squared, with a minimum to avoid too dim lighting
         intensity = base_intensity * (object_distance ** 2)
-        # print(f"Object distance: {object_distance:.2f} m, Light intensity: {intensity:.2f}")
         
         # Camera for rendering.
         camera = pyrender.IntrinsicsCamera(
@@ -317,9 +312,9 @@ class PyrenderRasterizer(renderer_base.RendererBase):
         # Create light with distance-adjusted intensity
         light = pyrender.SpotLight(
             color=np.ones(3),
-            intensity=intensity,  # Adjusted intensity
-            innerConeAngle=np.pi / 16.0, # pylone *2,
-            outerConeAngle=np.pi / 6.0, # pylone*2,
+            intensity=intensity,
+            innerConeAngle=np.pi / 16.0,
+            outerConeAngle=np.pi / 6.0,
         )
 
         light_node = pyrender.Node(light=light, matrix=trans_c2w)

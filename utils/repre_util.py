@@ -149,7 +149,7 @@ def save_simple_object_repre(
     repre_dir: str,
     ) -> None:
 
-    # Save the object into torch data.
+    # Save the object into torch data. Simple version without camera metadata
 
     object_dict = {}
 
@@ -182,7 +182,7 @@ def load_simple_object_repre(
     tensor_device: str = "cuda",
     load_fields: Optional[List[str]] = None,
 ) -> FeatureBasedObjectRepre:
-    """Loads a representation of the specified object."""
+    """Loads a representation of the specified object (simple version without camera metadata)."""
 
     repre_path = os.path.join(repre_dir, "repre.pth")
     logger.info(f"Loading repre from: {repre_path}")

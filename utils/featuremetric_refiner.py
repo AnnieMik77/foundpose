@@ -17,8 +17,6 @@ def refine(
         num_iters: int = 30
 ) -> Tuple[ObjectPose, Tensor]:
     """
-    TODO: this may be batched
-
     Refine the pose using the ClassicOptimizer.
     Args:
         initial_pose_m2c: Initial pose.
