@@ -1,5 +1,3 @@
-import logging
-
 """
 Utilities for more useful logging output.
 """

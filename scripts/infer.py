@@ -6,6 +6,8 @@ import datetime
 from copy import deepcopy
 
 import os
+
+from foundpose.utils import logging
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import gc
 import time
@@ -40,7 +42,6 @@ from utils import (
     data_util,
     renderer_builder,
     json_util, 
-    logging,
     misc,
     structs,
     featuremetric_refiner

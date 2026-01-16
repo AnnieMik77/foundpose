@@ -113,7 +113,6 @@ class DinoFeatureExtractor(nn.Module):
         )
 
     def forward(self, images: torch.Tensor) -> tp.Dict[str, torch.Tensor]:
-
         # Note: function `extract_output_features` defined in the DINOv2 model itself
         # outputs normalized token facets from the last layer. For example, for
         # vitl14, the same output can be obtained with model name:
@@ -375,9 +374,9 @@ class DinoFeatureExtractor(nn.Module):
             return model
 
         stride = nn_utils._pair(stride)
-        assert all(
-            (patch_size // s_) * s_ == patch_size for s_ in stride
-        ), f"stride {stride} should divide patch_size {patch_size}"
+        assert all((patch_size // s_) * s_ == patch_size for s_ in stride), (
+            f"stride {stride} should divide patch_size {patch_size}"
+        )
 
         # Fix the stride.
         model.patch_embed.proj.stride = stride

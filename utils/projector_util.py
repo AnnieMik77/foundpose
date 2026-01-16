@@ -66,6 +66,18 @@ class PCAProjector(Projector):
         return array_to_tensor(self.pca.transform(tensor_to_array(data_x))).to(
             data_x.device
         )
+    
+class IdentityProjector(Projector):
+    def __init__(self) -> None:
+        pass
+
+    def fit(
+        self, data_x: torch.Tensor, data_y: Optional[torch.Tensor] = None, **kwargs: Any
+    ) -> None:
+        pass
+
+    def transform(self, data_x: torch.Tensor) -> torch.Tensor:
+        return data_x
 
 def project_features(
     feat_vectors: torch.Tensor,
@@ -108,7 +120,10 @@ def projector_to_tensordict(projector: Projector) -> Dict[str, Any]:
                 "whiten": torch.tensor(projector.whiten),
             }
         }
-
+    elif isinstance(projector, IdentityProjector):
+        return {
+            "identity_projector": {}
+        }
     else:
         raise ValueError(f"Unknown projector type: {type(projector)}")
 
@@ -119,8 +134,7 @@ def projector_from_tensordict(projector_dict: Dict[str, Any]) -> Projector:
         projector: Feature projector.
     Return:
         A tensordict.
-    """
-
+    """ 
     if "pca_projector" in projector_dict:
         pca_projector = projector_dict["pca_projector"]
 
@@ -140,5 +154,7 @@ def projector_from_tensordict(projector_dict: Dict[str, Any]) -> Projector:
 
         return projector
 
+    elif "identity_projector" in projector_dict:
+        return IdentityProjector()
     else:
         raise ValueError("Unknown projector type.")
