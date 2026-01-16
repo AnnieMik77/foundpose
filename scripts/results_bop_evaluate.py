@@ -2,10 +2,18 @@ import os
 
 import bop_toolkit_lib
 import subprocess
+import bop_toolkit_lib.config as bop_config
+from utils import misc
 
-csv_path = "/local2/homes/mikesann/multiview_proj/mock_data_dir/bop_datasets/inference/improvement_experiments/ycbv_refinement_noalign/coarse_ycbv-test.csv"
-eval_dir = "/local2/homes/mikesann/multiview_proj/mock_data_dir/bop_datasets/inference/improvement_experiments/ycbv_refinement_noalign/"
-os.makedirs(eval_dir, exist_ok=True)
+object_dataset = "ycbv"
+inference_version = "featuremetric_refinement"
+signature = misc.slugify(object_dataset) + "_{}".format(inference_version)
+
+
+csv_path = os.path.join(
+    bop_config.output_path, "inference", signature, f"foundpose_{object_dataset}-test.csv"
+)
+eval_dir = os.path.dirname(csv_path)
 
 bop_path = os.path.dirname(bop_toolkit_lib.__file__).split("/bop_toolkit_lib")[0]
 script_path = os.path.join(bop_path, "scripts", "eval_bop19_pose.py")

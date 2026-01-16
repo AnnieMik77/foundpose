@@ -14,12 +14,12 @@ logger: logging.Logger = logging.get_logger()
 
 # Load the estimated poses from the json file
 object_dataset = "ycbv"
-version = "no_refinement"
+inference_version = "featuremetric_refinement"
 object_lids = None
 
-signature = misc.slugify(object_dataset) + "_{}".format(version)
+signature = misc.slugify(object_dataset) + "_{}".format(inference_version)
 output_dir = os.path.join(
-    bop_config.output_path, "inference", "improvement_experiments", signature,
+    bop_config.output_path, "inference", signature,
 )
 
 if object_lids is None:
@@ -91,7 +91,7 @@ for object_lid in object_lids:
             )
         )
 
-bop_path = os.path.join(output_dir, f"coarse_{object_dataset}-test.csv")
+bop_path = os.path.join(output_dir, f"foundpose_{object_dataset}-test.csv")
 logger.info("Saving BOP submission file to: {}".format(bop_path))
 with open(bop_path, "wb") as f:
     f.write("\n".join(lines).encode("utf-8"))
