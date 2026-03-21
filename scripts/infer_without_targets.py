@@ -92,8 +92,6 @@ class InferOpts(NamedTuple):
     pnp_refine_lm: bool = True
 
     final_pose_type: str = "refined" # refined or best_coarse
-    refiner_align_corners: bool = True
-    eval_full_dataset: bool = False
 
     # Other options.
     save_estimates: bool = True
@@ -672,7 +670,7 @@ def infer(opts: InferOpts) -> None:
 
                     # Get the feature map for the query
                     feature_map_chw_proj_ref = feature_map_chw_proj.unsqueeze(0)
-                    feature_map_chw_proj_ref = torch.nn.functional.interpolate(feature_map_chw_proj_ref,(opts.crop_size[0], opts.crop_size[1]), mode='bilinear', align_corners=opts.refiner_align_corners)
+                    feature_map_chw_proj_ref = torch.nn.functional.interpolate(feature_map_chw_proj_ref,(opts.crop_size[0], opts.crop_size[1]), mode='bilinear', align_corners=False)
                     
                     # Run the refinement
                     optimized_pose, failed = featuremetric_refiner.refine(

@@ -94,8 +94,6 @@ class InferOpts(NamedTuple):
     pnp_refine_lm: bool = True
 
     final_pose_type: str = "refined" # refined or best_coarse
-    refiner_align_corners: bool = True
-    eval_full_dataset: bool = False
 
     # Other options.
     save_estimates: bool = True
@@ -149,10 +147,7 @@ def infer(opts: InferOpts) -> None:
     )
 
     # Load BOP test targets
-    if opts.eval_full_dataset:
-        test_targets_path = os.path.join(bop_test_split_props["base_path"], "test_targets_bop19.json")
-    else:
-        test_targets_path = os.path.join(bop_test_split_props["base_path"], "test_targets_bop19_tenth.json")
+    test_targets_path = os.path.join(bop_test_split_props["base_path"], "test_targets_bop19.json")
     targets = inout.load_json(test_targets_path)
 
     scene_ids = dataset_params.get_present_scene_ids(bop_test_split_props)
@@ -672,7 +667,7 @@ def infer(opts: InferOpts) -> None:
 
                     # Get the feature map for the query
                     feature_map_chw_proj_ref = feature_map_chw_proj.unsqueeze(0)
-                    feature_map_chw_proj_ref = torch.nn.functional.interpolate(feature_map_chw_proj_ref,(opts.crop_size[0], opts.crop_size[1]), mode='bilinear', align_corners=opts.refiner_align_corners)
+                    feature_map_chw_proj_ref = torch.nn.functional.interpolate(feature_map_chw_proj_ref,(opts.crop_size[0], opts.crop_size[1]), mode='bilinear', align_corners=False)
                     
                     # Run the refinement
                     optimized_pose, failed = featuremetric_refiner.refine(

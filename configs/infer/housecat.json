@@ -23,8 +23,6 @@
         "pnp_ransac_iter": 400,
         "pnp_inlier_thresh": 10.0,
         "final_pose_type": "refined",
-        "refiner_align_corners": false,
-        "eval_full_dataset": true,
         "num_preds_factor": 1,
         "vis_results": true
     }
