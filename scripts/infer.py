@@ -7,7 +7,6 @@ from copy import deepcopy
 
 import os
 
-from foundpose.utils import logging
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import gc
 import time
@@ -41,7 +40,8 @@ from utils import (
     vis_util,
     data_util,
     renderer_builder,
-    json_util, 
+    json_util,
+    logging, 
     misc,
     structs,
     featuremetric_refiner
@@ -69,6 +69,7 @@ class InferOpts(NamedTuple):
     crop_size: Tuple[int, int] = (420, 420)
 
     sensor: str = None
+    modality: str = None
 
     # Object instance options.
     use_detections: bool = True
@@ -165,6 +166,11 @@ def infer(opts: InferOpts) -> None:
     # scene_gts_info = {}
     scene_cameras = {}
 
+    # Override modality and sensor if specified.
+    if opts.modality is not None:
+        bop_test_split_props["eval_modality"] = opts.modality
+    if opts.sensor is not None:
+        bop_test_split_props["eval_sensor"] = opts.sensor
     eval_modality, eval_sensor = bop_test_split_props["eval_modality"], bop_test_split_props["eval_sensor"]
 
     for scene_id in scene_im_ids.keys():
@@ -190,12 +196,12 @@ def infer(opts: InferOpts) -> None:
         timer.start()
 
         # The output folder is named with slugified dataset path.
-        version = opts.version
+        version = opts.version + "_" + opts.sensor if opts.sensor is not None else opts.version
         if version == "":
             version = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         signature = misc.slugify(opts.object_dataset) + "_{}".format(version)
         output_dir = os.path.join(
-            bop_config.output_path, "inference", "improvement_experiments", signature, str(object_lid)
+            bop_config.output_path, "inference", signature, str(object_lid)
         )
         os.makedirs(output_dir, exist_ok=True)
 
@@ -514,11 +520,16 @@ def infer(opts: InferOpts) -> None:
                     query_features.shape[1] != repre.feat_vectors.shape[1]
                     and len(repre.feat_raw_projectors) != 0
                 ):
-                    query_features_proj = projector_util.project_features(
-                        feat_vectors=query_features,
-                        projectors=repre.feat_raw_projectors,
-                    ).contiguous()
-
+                    try:
+                        query_features_proj = projector_util.project_features(
+                            feat_vectors=query_features,
+                            projectors=repre.feat_raw_projectors,
+                        ).contiguous()
+                    except Exception as e:
+                        logger.warning(
+                            f"Projecting features failed with error {e}, using raw features."
+                        )
+                        continue
                     _c, _h, _w = feature_map_chw.shape
                     feature_map_chw_proj = (
                         projector_util.project_features(
@@ -667,7 +678,7 @@ def infer(opts: InferOpts) -> None:
 
                     # Get the feature map for the query
                     feature_map_chw_proj_ref = feature_map_chw_proj.unsqueeze(0)
-                    feature_map_chw_proj_ref = torch.nn.functional.interpolate(feature_map_chw_proj_ref,(opts.crop_size[0], opts.crop_size[1]), mode='bilinear', align_corners=False)
+                    feature_map_chw_proj_ref = torch.nn.functional.interpolate(feature_map_chw_proj_ref,(opts.crop_size[0], opts.crop_size[1]), mode='bilinear')
                     
                     # Run the refinement
                     optimized_pose, failed = featuremetric_refiner.refine(

@@ -6,6 +6,7 @@ import datetime
 from copy import deepcopy
 
 import os
+
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import gc
 import time
@@ -39,8 +40,8 @@ from utils import (
     vis_util,
     data_util,
     renderer_builder,
-    json_util, 
-    logging,
+    json_util,
+    logging, 
     misc,
     structs,
     featuremetric_refiner
@@ -57,7 +58,6 @@ class InferOpts(NamedTuple):
     """Options that can be specified via the command line."""
 
     version: str
-    sensor: str
     repre_version: str
     object_dataset: str
     object_lids: Optional[List[int]] = None
@@ -67,6 +67,9 @@ class InferOpts(NamedTuple):
     crop: bool = True
     crop_rel_pad: float = 0.2
     crop_size: Tuple[int, int] = (420, 420)
+
+    sensor: str = None
+    modality: str = None
 
     # Object instance options.
     use_detections: bool = True
@@ -117,10 +120,11 @@ def infer(opts: InferOpts) -> None:
         path = os.path.join(
             datasets_path,
             "detections",
-            "ipt",
-            f"ipt_itoddmv-test_{opts.sensor}-sam2.json",
+            "nids",
+            f"nids_itoddmv-test_fibo_fine-gdino-base-dinov3b-cls-{opts.sensor}.json",
         )
         detections = infer_pose_util.load_detections_in_bop_format(path)
+
 
     # Prepare feature extractor.
     extractor = feature_util.make_feature_extractor(opts.extractor_name)
@@ -145,10 +149,10 @@ def infer(opts: InferOpts) -> None:
 
     scene_ids = dataset_params.get_present_scene_ids(bop_test_split_props)
     
-    # here we will create targets based on detections, so like all objects in the detections
     scene_im_ids = {}
     test_target_count = {}
     targets_per_obj = {}
+    # Create targets based on detections
     for key, targets in detections.items():
         test_target_count[key] = len(targets)
         target = {}
@@ -160,8 +164,11 @@ def infer(opts: InferOpts) -> None:
     # scene_gts_info = {}
     scene_cameras = {}
 
-    bop_test_split_props["eval_modality"] = "gray"
-    bop_test_split_props["eval_sensor"] = opts.sensor
+    # Override modality and sensor if specified.
+    if opts.modality is not None:
+        bop_test_split_props["eval_modality"] = opts.modality
+    if opts.sensor is not None:
+        bop_test_split_props["eval_sensor"] = opts.sensor
     eval_modality, eval_sensor = bop_test_split_props["eval_modality"], bop_test_split_props["eval_sensor"]
 
 
@@ -193,7 +200,7 @@ def infer(opts: InferOpts) -> None:
             version = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         signature = misc.slugify(opts.object_dataset) + "_{}".format(version)
         output_dir = os.path.join(
-            bop_config.output_path, "inference", "improvement_experiments", signature, str(object_lid)
+            bop_config.output_path, "inference", signature, str(object_lid)
         )
         os.makedirs(output_dir, exist_ok=True)
 
@@ -670,7 +677,7 @@ def infer(opts: InferOpts) -> None:
 
                     # Get the feature map for the query
                     feature_map_chw_proj_ref = feature_map_chw_proj.unsqueeze(0)
-                    feature_map_chw_proj_ref = torch.nn.functional.interpolate(feature_map_chw_proj_ref,(opts.crop_size[0], opts.crop_size[1]), mode='bilinear', align_corners=False)
+                    feature_map_chw_proj_ref = torch.nn.functional.interpolate(feature_map_chw_proj_ref,(opts.crop_size[0], opts.crop_size[1]), mode='bilinear')
                     
                     # Run the refinement
                     optimized_pose, failed = featuremetric_refiner.refine(

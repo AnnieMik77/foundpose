@@ -6,19 +6,17 @@
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import os
-
-
+# set up visible gpu
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
+
 import cv2
-# print cuda devices
-print("CUDA_VISIBLE_DEVICES: ", os.environ["CUDA_VISIBLE_DEVICES"])
 
 import numpy as np
 
 from bop_toolkit_lib import inout, dataset_params
 
 import bop_toolkit_lib.config as bop_config
-# set visible devices
 
 from utils import (
     misc as foundpose_misc,
@@ -34,7 +32,9 @@ from utils.structs import AlignedBox2f, PinholePlaneCameraModel
 from utils import geometry, renderer_builder
 from utils.renderer_base import RenderType
 
-os.environ['PYOPENGL_PLATFORM'] = 'egl'
+from pathlib import Path
+
+
 
 class GenTemplatesOpts(NamedTuple):
     """Options that can be specified via the command line."""
@@ -120,7 +120,6 @@ def synthesize_templates(opts: GenTemplatesOpts) -> None:
     )
     # Get properties of the default camera for the specified dataset.
     bop_camera = dataset_params.get_camera_params(datasets_path=datasets_path, dataset_name=opts.object_dataset)
-    # bop_camera = inout.load_cam_params(join(datasets_path, opts.object_dataset, "camera_3dlong.json"))
     logger.info(f"Bop camera details are read ")
 
     print("Object lids: ", object_lids)

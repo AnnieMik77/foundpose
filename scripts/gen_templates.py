@@ -9,7 +9,7 @@ import os
 # set up visible gpu
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
-import torch
+
 import cv2
 
 import numpy as np
@@ -98,10 +98,8 @@ def synthesize_templates(opts: GenTemplatesOpts) -> None:
         dataset_name=opts.object_dataset,
         split="test"
     )
-    from os.path import join
     # Get properties of the default camera for the specified dataset.
     bop_camera = dataset_params.get_camera_params(datasets_path=datasets_path, dataset_name=opts.object_dataset)
-    # bop_camera = inout.load_cam_params(join(datasets_path, opts.object_dataset, "camera_3dlong.json"))
     logger.info(f"Bop camera details are read ")
 
     print("Object lids: ", object_lids)
@@ -299,8 +297,8 @@ def synthesize_templates(opts: GenTemplatesOpts) -> None:
                 if (
                     object_box.left == 0
                     or object_box.top == 0
-                    or object_box.right == render_camera_model_c2w.width
-                    or object_box.bottom == render_camera_model_c2w.height
+                    or object_box.right == render_camera_model_c2w.width - 1
+                    or object_box.bottom == render_camera_model_c2w.height -1
                 ):
                     raise ValueError("The model does not fit the viewport.")
 

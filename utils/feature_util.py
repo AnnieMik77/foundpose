@@ -9,8 +9,7 @@ import torch.nn.functional as F
 from utils import logging, misc, geometry
 from utils.structs import PinholePlaneCameraModel
 
-from utils import dinov2_utils,dinov3_utils,feature_extractors
-from utils import radio_utils
+from utils import dinov2_utils,dinov3_utils,radio_utils,feature_extractors
 
 logger: logging.Logger = logging.get_logger()
 
@@ -23,7 +22,7 @@ def make_feature_extractor(model_name: str) -> torch.nn.Module:
         return dinov3_utils.DINOv3FeatureExtractor(model_name=model_name)
     elif model_name.startswith("radiov2_"):
         return radio_utils.RadioFeatureExtractor(model_name=model_name)
-    elif model_name.startswith("RGB"): # TODO
+    elif model_name.startswith("RGB"):
         return feature_extractors.RGBFeatureExtractor(model_name=model_name)
     elif model_name.startswith("sift"):
         return feature_extractors.SIFTFeatureExtractor(model_name=model_name)
@@ -106,7 +105,7 @@ def filter_points_by_mask(points: torch.Tensor, mask: torch.Tensor) -> torch.Ten
 
 
 def sample_feature_map_at_points(
-    feature_map_chw: torch.Tensor, points: torch.Tensor, image_size: Tuple[int, int], align_corners: bool = False
+    feature_map_chw: torch.Tensor, points: torch.Tensor, image_size: Tuple[int, int]
 ) -> torch.Tensor:
     """Samples a feature map at the specified 2D coordinates.
 
@@ -130,7 +129,7 @@ def sample_feature_map_at_points(
     features = torch.nn.functional.grid_sample(
         feature_map_chw.unsqueeze(0),
         query_coords,
-        align_corners=align_corners,
+        align_corners=False,
     )
 
     # Reshape the feature vectors to (N, C).
@@ -228,11 +227,7 @@ def get_visual_features_registered_in_3d(
     extractor: torch.nn.Module,
     grid_cell_size: float,
     debug: bool = False,
-    # image_mask: torch.Tensor = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-
-    # TODO: batch this. Currently only works for a single image.
-    # There will need to be a "valid" mask to pad ragged arrays.
 
     device = image_chw.device
 
@@ -255,8 +250,6 @@ def get_visual_features_registered_in_3d(
 
     # Keep only grid points inside the object mask.
     query_points = filter_points_by_mask(grid_points, object_mask_eroded)
-    # if image_mask is not None:
-    #     query_points = filter_points_by_mask(query_points, image_mask)
 
     # Get 3D coordinates corresponding to the query points.
     vertices_in_cam = lift_2d_points_to_3d(
@@ -270,8 +263,6 @@ def get_visual_features_registered_in_3d(
     )
     vertex_ids = torch.arange(vertices_in_model.shape[0], dtype=torch.int32)
 
-    # Extract feature vectors, but mask first
-    # image_chw = image_chw * image_mask
     image_bchw = image_chw.unsqueeze(0)
 
     # Extract feature map at the current image scale.

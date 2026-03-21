@@ -1,5 +1,4 @@
 *.pyc
 .vscode/
 logs/*
-scripts/backup
 *.out
